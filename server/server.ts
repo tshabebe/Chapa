@@ -12,7 +12,23 @@ const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY //Put Your Chapa Secret Key
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET // Webhook secret for signature verification
 const CALLBACK_URL = process.env.CALLBACK_URL // Callback URL
 // Enable CORS
-app.use(cors())
+app.use(
+  cors({
+    origin: [
+      'http://localhost:5173', // Local development
+      'https://chapa-ten.vercel.app', // Vercel deployment
+      'https://82e1-102-218-50-213.ngrok-free.app', // Ngrok tunnel
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'chapa-signature',
+      'x-chapa-signature',
+    ],
+  }),
+)
 
 // Parse JSON bodies
 app.use(express.json())

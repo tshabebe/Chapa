@@ -1,0 +1,8 @@
+{
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "env": {
+    "VITE_API_BASE_URL": "https://ee60-102-208-97-33.ngrok-free.app"
+  }
+}

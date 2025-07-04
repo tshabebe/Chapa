@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import './App.css'
 import axios from 'axios'
+import config from './config'
 
 function App() {
   const [form, setForm] = useState({
@@ -30,7 +31,7 @@ function App() {
     try {
       console.log('🚀 Sending payment request to backend...')
       const res = await axios.post(
-        'https://82e1-102-218-50-213.ngrok-free.app/payment-callback/accept-payment',
+        `${config.apiBaseUrl}${config.endpoints.payment}`,
         {
           ...form,
           tx_ref,

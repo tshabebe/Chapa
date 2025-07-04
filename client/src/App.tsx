@@ -30,7 +30,7 @@ function App() {
     try {
       console.log('🚀 Sending payment request to backend...')
       const res = await axios.post(
-        'http://localhost:5000/accept-payment',
+        'https://82e1-102-218-50-213.ngrok-free.app/payment-callback/accept-payment',
         {
           ...form,
           tx_ref,

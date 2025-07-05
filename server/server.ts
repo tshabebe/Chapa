@@ -60,7 +60,7 @@ app.post('/accept-payment', async (req, res) => {
       last_name: last_name,
       phone_number: phone_number,
       tx_ref: tx_ref,
-      return_url: 'http://localhost:5173/', // Set your return URL
+      return_url: 'https://chapa-ten.vercel.app/', // Set your return URL
       callback_url: CALLBACK_URL, // Webhook callback URL
       'customization[title]': 'Payment for My App',
       'customization[description]': 'Thank you for your payment',

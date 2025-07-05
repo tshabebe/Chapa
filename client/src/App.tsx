@@ -30,7 +30,7 @@ function App() {
     try {
       console.log('🚀 Sending payment request to backend...')
       const res = await axios.post(
-        'https://82e1-102-218-50-213.ngrok-free.app/accept-payment',
+        'https://chapa-auq6.onrender.com/accept-payment',
         {
           ...form,
           tx_ref,

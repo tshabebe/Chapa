@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 import './App.css'
 import axios from 'axios'
@@ -15,10 +15,34 @@ function App() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [balance, setBalance] = useState<number>(0)
+  const [balanceLoading, setBalanceLoading] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
+
+  // Fetch balance
+  const fetchBalance = async () => {
+    try {
+      setBalanceLoading(true)
+      const response = await axios.get(
+        'https://chapa-auq6.onrender.com/balance',
+      )
+      if (response.data.success) {
+        setBalance(response.data.data.balance)
+      }
+    } catch (error) {
+      console.log('❌ Failed to fetch balance:', error)
+    } finally {
+      setBalanceLoading(false)
+    }
+  }
+
+  // Fetch balance on component mount
+  useEffect(() => {
+    fetchBalance()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -72,6 +96,31 @@ function App() {
         <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">
           Payment Form
         </h1>
+
+        {/* Balance Display */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-lg font-semibold text-blue-800">
+              Current Balance:
+            </span>
+            <div className="text-right">
+              {balanceLoading ? (
+                <span className="text-blue-600">Loading...</span>
+              ) : (
+                <span className="text-2xl font-bold text-blue-900">
+                  {balance.toFixed(2)} ETB
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={fetchBalance}
+            disabled={balanceLoading}
+            className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            🔄 Refresh Balance
+          </button>
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">

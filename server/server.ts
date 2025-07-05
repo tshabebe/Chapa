@@ -3,6 +3,8 @@ import express from 'express'
 import cors from 'cors'
 import axios from 'axios'
 import crypto from 'crypto'
+import mongoose from 'mongoose'
+import Balance from './models/Balance.js'
 
 dotenv.config()
 
@@ -11,11 +13,18 @@ const PORT = process.env.PORT || 5000
 const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY //Put Your Chapa Secret Key
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET // Webhook secret for signature verification
 const CALLBACK_URL = process.env.CALLBACK_URL // Callback URL
+const MONGODB_URL = process.env.MONGODB_URL // MongoDB connection URL
 // Enable CORS from everywhere
 app.use(cors())
 
 // Parse JSON bodies
 app.use(express.json())
+
+// Connect to MongoDB
+mongoose
+  .connect(MONGODB_URL || 'mongodb://localhost:27017/chapa-payments')
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch((err) => console.log('❌ MongoDB connection error:', err))
 
 // Your routes and API implementations go here
 
@@ -134,8 +143,18 @@ app.post('/payment-callback', async (req, res) => {
 
     console.log('✅ Transaction verified:', tx_ref, status, event)
 
-    // Here you can add your business logic
-    // e.g., update database, send confirmation email, etc.
+    // Increment balance on successful payment
+    if (status === 'success' && event === 'charge.success') {
+      try {
+        const balance = (await Balance.findOne()) || new Balance()
+        balance.balance += parseFloat(amount)
+        balance.lastUpdated = new Date()
+        await balance.save()
+        console.log('💰 Balance incremented by:', amount, currency)
+      } catch (error: any) {
+        console.log('❌ Balance increment error:', error.message)
+      }
+    }
 
     res.status(200).json({
       message: 'Callback processed successfully',
@@ -148,6 +167,56 @@ app.post('/payment-callback', async (req, res) => {
     console.log('❌ Callback error:', error.message)
     res.status(400).json({
       message: 'Callback processing failed',
+      error: error.message,
+    })
+  }
+})
+
+// Get current balance
+app.get('/balance', async (req, res) => {
+  try {
+    const balance = (await Balance.findOne()) || new Balance()
+    console.log('💰 Balance fetched:', balance.balance, balance.currency)
+    res.status(200).json({
+      success: true,
+      data: {
+        balance: balance.balance,
+        currency: balance.currency,
+        lastUpdated: balance.lastUpdated,
+      },
+    })
+  } catch (error: any) {
+    console.log('❌ Balance fetch error:', error.message)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch balance',
+      error: error.message,
+    })
+  }
+})
+
+// Reset balance (for testing)
+app.post('/balance/reset', async (req, res) => {
+  try {
+    const balance = (await Balance.findOne()) || new Balance()
+    balance.balance = 0
+    balance.lastUpdated = new Date()
+    await balance.save()
+
+    console.log('🔄 Balance reset to 0')
+    res.status(200).json({
+      success: true,
+      message: 'Balance reset successfully',
+      data: {
+        balance: balance.balance,
+        currency: balance.currency,
+      },
+    })
+  } catch (error: any) {
+    console.log('❌ Balance reset error:', error.message)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset balance',
       error: error.message,
     })
   }

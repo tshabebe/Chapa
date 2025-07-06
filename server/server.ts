@@ -34,51 +34,7 @@ const app = express()
 // Enable CORS from everywhere
 app.use(cors())
 
-// Custom middleware for webhook endpoint
-app.use('/payment-callback', (req, res, next) => {
-  let data = ''
-
-  req.on('data', (chunk) => {
-    data += chunk
-  })
-
-  req.on('end', () => {
-    try {
-      // Store raw body for signature verification
-      ;(req as any).rawBody = Buffer.from(data)
-      // Parse JSON body
-      req.body = JSON.parse(data)
-      next()
-    } catch (error) {
-      console.log('❌ Webhook body parsing error:', error)
-      res.status(400).json({ error: 'Invalid JSON body' })
-    }
-  })
-
-  req.on('error', (error) => {
-    console.log('❌ Webhook request error:', error)
-    res.status(400).json({ error: 'Request error' })
-  })
-})
-
-// Parse JSON bodies for other routes
-app.use((req, res, next) => {
-  if (req.path !== '/payment-callback') {
-    express.json({ limit: '10mb' })(req, res, next)
-  } else {
-    next()
-  }
-})
-
-// Parse URL-encoded bodies
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
-
-// Set timeouts for all requests
-app.use((req, res, next) => {
-  req.setTimeout(30000) // 30 seconds
-  res.setTimeout(30000) // 30 seconds
-  next()
-})
+app.use(express.json())
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -86,17 +42,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'Chapa Payment Server with Telegram Bot' })
 })
 
-// Test webhook endpoint
-app.post('/test-webhook', (req, res) => {
-  console.log('🧪 Test webhook received:', req.body)
-  res.json({
-    message: 'Test webhook received',
-    body: req.body,
-    headers: req.headers,
-  })
-})
-
-// Callback endpoint for Chapa webhook
 app.post('/payment-callback', async (req, res) => {
   console.log(
     '🔔 Payment callback received:',
@@ -108,10 +53,7 @@ app.post('/payment-callback', async (req, res) => {
   const xChapaSignature = req.headers['x-chapa-signature'] as string
 
   if (WEBHOOK_SECRET) {
-    // Use raw body for signature verification
-    const payload = (req as any).rawBody
-      ? (req as any).rawBody.toString()
-      : JSON.stringify(req.body)
+    const payload = JSON.stringify(req.body)
     const expectedHash = crypto
       .createHmac('sha256', WEBHOOK_SECRET)
       .update(payload)
@@ -122,9 +64,6 @@ app.post('/payment-callback', async (req, res) => {
 
     if (!isChapaSignatureValid && !isXChapaSignatureValid) {
       console.log('❌ Invalid webhook signature')
-      console.log('Expected hash:', expectedHash)
-      console.log('Received chapa-signature:', chapaSignature)
-      console.log('Received x-chapa-signature:', xChapaSignature)
       res.status(401).json({
         error: 'Invalid webhook signature',
         message: 'Webhook verification failed',
@@ -155,10 +94,7 @@ app.post('/payment-callback', async (req, res) => {
     // Increment balance on successful payment
     if (status === 'success' && event === 'charge.success') {
       try {
-        let balance = await Balance.findOne({ userId: 'default-user' })
-        if (!balance) {
-          balance = new Balance({ userId: 'default-user' })
-        }
+        const balance = (await Balance.findOne()) || new Balance()
         balance.balance += parseFloat(amount)
         balance.lastUpdated = new Date()
         await balance.save()
@@ -168,7 +104,6 @@ app.post('/payment-callback', async (req, res) => {
       }
     }
 
-    // Send response immediately
     res.status(200).json({
       message: 'Callback processed successfully',
       tx_ref,
@@ -176,36 +111,14 @@ app.post('/payment-callback', async (req, res) => {
       event,
       verified: true,
     })
-    console.log('✅ Response sent successfully')
   } catch (error: any) {
     console.log('❌ Callback error:', error.message)
-    // Only send error response if headers haven't been sent
-    if (!res.headersSent) {
-      res.status(400).json({
-        message: 'Callback processing failed',
-        error: error.message,
-      })
-    }
+    res.status(400).json({
+      message: 'Callback processing failed',
+      error: error.message,
+    })
   }
 })
-
-// Global error handler
-app.use(
-  (
-    error: any,
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    console.log('❌ Global error handler:', error.message)
-    if (!res.headersSent) {
-      res.status(500).json({
-        message: 'Internal server error',
-        error: error.message,
-      })
-    }
-  },
-)
 
 // Start Express server
 app.listen(PORT, () => {

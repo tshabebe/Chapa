@@ -1,6 +1,9 @@
 import { Bot, InlineKeyboard, Keyboard } from 'grammy'
+import express from 'express'
+import cors from 'cors'
 import dotenv from 'dotenv'
 import axios from 'axios'
+import crypto from 'crypto'
 import mongoose from 'mongoose'
 import Balance from './models/Balance.js'
 
@@ -8,8 +11,12 @@ dotenv.config()
 
 // Environment variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
-const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
-const MONGODB_URL = process.env.MONGODB_URL
+const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY //Put Your Chapa Secret Key
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET // Webhook secret for signature verification
+const CALLBACK_URL = process.env.CALLBACK_URL // Callback URL
+const MONGODB_URL = process.env.MONGODB_URL // MongoDB connection URL
+const BOT_RETURN_URL = process.env.BOT_RETURN_URL // Bot return URL
+const PORT = process.env.PORT || 5000
 
 if (!TELEGRAM_BOT_TOKEN) {
   throw new Error('TELEGRAM_BOT_TOKEN is required')
@@ -20,6 +27,106 @@ mongoose
   .connect(MONGODB_URL || 'mongodb://localhost:27017/chapa-payments')
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.log('❌ MongoDB connection error:', err))
+
+// Create Express app
+const app = express()
+
+// Enable CORS from everywhere
+app.use(cors())
+
+// Parse JSON bodies
+app.use(express.json())
+
+// Basic routes
+app.get('/', (req, res) => {
+  console.log('✅ GET / - Root endpoint hit')
+  res.json({ message: 'Chapa Payment Server with Telegram Bot' })
+})
+
+// Callback endpoint for Chapa webhook
+app.post('/payment-callback', async (req, res) => {
+  console.log(
+    '🔔 Payment callback received:',
+    req.body.event || 'unknown event',
+  )
+
+  // Verify webhook signature
+  const chapaSignature = req.headers['chapa-signature'] as string
+  const xChapaSignature = req.headers['x-chapa-signature'] as string
+
+  if (WEBHOOK_SECRET) {
+    const payload = JSON.stringify(req.body)
+    const expectedHash = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(payload)
+      .digest('hex')
+
+    const isChapaSignatureValid = chapaSignature === expectedHash
+    const isXChapaSignatureValid = xChapaSignature === expectedHash
+
+    if (!isChapaSignatureValid && !isXChapaSignatureValid) {
+      console.log('❌ Invalid webhook signature')
+      res.status(401).json({
+        error: 'Invalid webhook signature',
+        message: 'Webhook verification failed',
+      })
+      return
+    }
+    console.log('✅ Webhook signature verified')
+  }
+
+  try {
+    const { tx_ref, status, currency, amount, event } = req.body
+
+    // Verify the transaction with Chapa
+    const verificationResponse = await axios.get(
+      `https://api.chapa.co/v1/transaction/verify/${tx_ref}`,
+      {
+        headers: {
+          Authorization: `Bearer ${CHAPA_AUTH_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+
+    console.log('✅ Verification response:', verificationResponse.data)
+
+    console.log('✅ Transaction verified:', tx_ref, status, event)
+
+    // Increment balance on successful payment
+    if (status === 'success' && event === 'charge.success') {
+      try {
+        const balance = (await Balance.findOne()) || new Balance()
+        balance.balance += parseFloat(amount)
+        balance.lastUpdated = new Date()
+        await balance.save()
+        console.log('💰 Balance incremented by:', amount, currency)
+      } catch (error: any) {
+        console.log('❌ Balance increment error:', error.message)
+      }
+    }
+
+    res.status(200).json({
+      message: 'Callback processed successfully',
+      tx_ref,
+      status,
+      event,
+      verified: true,
+    })
+  } catch (error: any) {
+    console.log('❌ Callback error:', error.message)
+    res.status(400).json({
+      message: 'Callback processing failed',
+      error: error.message,
+    })
+  }
+})
+
+// Start Express server
+app.listen(PORT, () => {
+  console.log(`🚀 Express server running on port ${PORT}`)
+  console.log(`🌐 Webhook URL: ${CALLBACK_URL}`)
+})
 
 // Create a new bot instance
 const bot = new Bot(TELEGRAM_BOT_TOKEN)
@@ -39,7 +146,6 @@ const mainMenu = new Keyboard()
   .text('💰 Make Payment')
   .text('💳 Check Balance')
   .row()
-  .text('🔄 Reset Balance')
   .text('❓ Help')
 
 // Start command
@@ -58,61 +164,6 @@ Choose an option from the menu below:
   await ctx.reply(welcomeMessage, {
     reply_markup: mainMenu,
   })
-})
-
-// Confirm payment command
-bot.command('confirm', async (ctx) => {
-  if (!ctx.message?.text) {
-    await ctx.reply('❌ Invalid message format')
-    return
-  }
-
-  const args = ctx.message.text.split(' ')
-  if (args.length < 2) {
-    await ctx.reply('❌ Usage: /confirm <transaction_reference>')
-    return
-  }
-
-  const tx_ref = args[1]
-  await ctx.reply('🔄 Confirming payment...')
-
-  const result = await confirmPayment(tx_ref!)
-
-  if (result.success) {
-    await ctx.reply(
-      `✅ Payment confirmed successfully!\n\n💰 Amount: ${result.amount} ${result.currency}\n💳 Transaction: ${tx_ref}`,
-      {
-        reply_markup: mainMenu,
-      },
-    )
-  } else {
-    await ctx.reply(
-      `❌ Payment confirmation failed: ${result.message || result.error}`,
-      {
-        reply_markup: mainMenu,
-      },
-    )
-  }
-})
-
-// Reset balance command (for testing)
-bot.command('reset', async (ctx) => {
-  try {
-    const balance = (await Balance.findOne()) || new Balance()
-    balance.balance = 0
-    balance.lastUpdated = new Date()
-    await balance.save()
-
-    console.log('🔄 Balance reset to 0')
-    await ctx.reply('🔄 Balance reset to 0 successfully!', {
-      reply_markup: mainMenu,
-    })
-  } catch (error: any) {
-    console.log('❌ Balance reset error:', error.message)
-    await ctx.reply('❌ Failed to reset balance.', {
-      reply_markup: mainMenu,
-    })
-  }
 })
 
 // Handle menu buttons
@@ -141,25 +192,6 @@ Last Updated: ${balance.lastUpdated.toLocaleString()}
   }
 })
 
-bot.hears('🔄 Reset Balance', async (ctx) => {
-  try {
-    const balance = (await Balance.findOne()) || new Balance()
-    balance.balance = 0
-    balance.lastUpdated = new Date()
-    await balance.save()
-
-    console.log('🔄 Balance reset to 0')
-    await ctx.reply('🔄 Balance reset to 0 successfully!', {
-      reply_markup: mainMenu,
-    })
-  } catch (error: any) {
-    console.log('❌ Balance reset error:', error.message)
-    await ctx.reply('❌ Failed to reset balance.', {
-      reply_markup: mainMenu,
-    })
-  }
-})
-
 bot.hears('❓ Help', async (ctx) => {
   const helpMessage = `
 ❓ How to use this bot:
@@ -172,12 +204,10 @@ bot.hears('❓ Help', async (ctx) => {
 2. 💳 Check Balance
    • View current balance
 
-3. 🔄 Reset Balance
-   • Reset balance to 0 (for testing)
-
-Commands:
-• /confirm <tx_ref> - Manually confirm a payment
-• /reset - Reset balance to 0
+Payment Process:
+• Your payment will be automatically confirmed via webhook
+• Balance will be updated automatically after successful payment
+• No manual confirmation needed
 
 For support, contact: @your_support_handle
   `
@@ -238,9 +268,16 @@ async function processPayment(ctx: any, userId: number) {
     const requestPayload = {
       amount: paymentData.amount,
       currency: 'ETB',
-      mobile: paymentData.mobile,
+      email: `user${userId}@telegram.com`,
+      first_name: 'Telegram',
+      last_name: 'User',
+      phone_number: paymentData.mobile,
       tx_ref: tx_ref,
-      return_url: 'https://t.me/botterstringbot',
+      return_url: BOT_RETURN_URL,
+      callback_url: CALLBACK_URL, // Webhook callback URL
+      'customization[title]': 'Payment for My App',
+      'customization[description]': 'Thank you for your payment',
+      'meta[hide_receipt]': 'false',
     }
 
     console.log('📤 Sending request to Chapa:', requestPayload)
@@ -265,7 +302,7 @@ async function processPayment(ctx: any, userId: number) {
         .text('🏠 Main Menu', 'main_menu')
 
       await ctx.reply(
-        `✅ Payment initialized successfully!\n\n💰 Amount: ${paymentData.amount} ETB\n🔗 Transaction ID: ${tx_ref}\n\nClick the button below to complete your payment:`,
+        `✅ Payment initialized successfully!\n\n💰 Amount: ${paymentData.amount} ETB\n🔗 Transaction ID: ${tx_ref}\n\nClick the button below to complete your payment:\n\n💡 Your payment will be automatically confirmed after completion.`,
         { reply_markup: successKeyboard },
       )
     } else {
@@ -281,50 +318,6 @@ async function processPayment(ctx: any, userId: number) {
     await ctx.reply('❌ Payment failed. Please try again.')
     userStates.delete(userId)
     userPaymentData.delete(userId)
-  }
-}
-
-// Confirm payment route (similar to server.ts webhook)
-async function confirmPayment(tx_ref: string) {
-  try {
-    console.log('🔔 Payment confirmation for:', tx_ref)
-
-    // Verify the transaction with Chapa
-    const verificationResponse = await axios.get(
-      `https://api.chapa.co/v1/transaction/verify/${tx_ref}`,
-      {
-        headers: {
-          Authorization: `Bearer ${CHAPA_AUTH_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    )
-
-    console.log('✅ Verification response:', verificationResponse.data)
-
-    const { status, currency, amount, event } = verificationResponse.data.data
-
-    console.log('✅ Transaction verified:', tx_ref, status, event)
-
-    // Increment balance on successful payment
-    if (status === 'success' && event === 'charge.success') {
-      try {
-        const balance = (await Balance.findOne()) || new Balance()
-        balance.balance += parseFloat(amount)
-        balance.lastUpdated = new Date()
-        await balance.save()
-        console.log('💰 Balance incremented by:', amount, currency)
-        return { success: true, amount, currency }
-      } catch (error: any) {
-        console.log('❌ Balance increment error:', error.message)
-        return { success: false, error: error.message }
-      }
-    }
-
-    return { success: false, message: 'Payment not successful' }
-  } catch (error: any) {
-    console.log('❌ Payment confirmation error:', error.message)
-    return { success: false, error: error.message }
   }
 }
 

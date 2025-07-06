@@ -50,6 +50,23 @@ balanceSchema.statics.getOrCreateBalance = async function (
   return balance
 }
 
-const Balance = mongoose.model('Balance', balanceSchema)
+// Define the interface for the Balance document
+interface IBalance extends mongoose.Document {
+  userId: string
+  balance: number
+  currency: string
+  lastUpdated: Date
+  incrementBalance(amount: number): Promise<IBalance>
+}
+
+// Define the interface for the Balance model
+interface IBalanceModel extends mongoose.Model<IBalance> {
+  getOrCreateBalance(userId?: string): Promise<IBalance>
+}
+
+const Balance = mongoose.model<IBalance, IBalanceModel>(
+  'Balance',
+  balanceSchema,
+)
 
 export default Balance

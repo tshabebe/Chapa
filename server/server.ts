@@ -34,15 +34,30 @@ const app = express()
 // Enable CORS from everywhere
 app.use(cors())
 
-// Parse JSON bodies for all routes except webhook
-app.use((req, res, next) => {
-  if (req.path === '/payment-callback') {
-    // For webhook, use raw body parsing
-    express.raw({ type: 'application/json' })(req, res, next)
-  } else {
-    // For other routes, use JSON parsing
-    express.json()(req, res, next)
-  }
+// Parse JSON bodies with proper configuration
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+      // Store raw body for signature verification
+      ;(req as any).rawBody = buf
+    },
+  }),
+)
+
+// Parse URL-encoded bodies
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Middleware to handle webhook requests more robustly
+app.use('/payment-callback', (req, res, next) => {
+  // Set timeout for webhook processing
+  req.setTimeout(30000) // 30 seconds
+  res.setTimeout(30000) // 30 seconds
+
+  // Ensure proper content type handling
+  res.setHeader('Content-Type', 'application/json')
+
+  next()
 })
 
 // Basic routes
@@ -53,41 +68,41 @@ app.get('/', (req, res) => {
 
 // Callback endpoint for Chapa webhook
 app.post('/payment-callback', async (req, res) => {
-  try {
-    // Parse the raw body for webhook verification
-    const rawBody = req.body.toString('utf8')
-    const webhookData = JSON.parse(rawBody)
+  console.log(
+    '🔔 Payment callback received:',
+    req.body.event || 'unknown event',
+  )
 
-    console.log(
-      '🔔 Payment callback received:',
-      webhookData.event || 'unknown event',
-    )
+  // Verify webhook signature
+  const chapaSignature = req.headers['chapa-signature'] as string
+  const xChapaSignature = req.headers['x-chapa-signature'] as string
 
-    // Verify webhook signature
-    const chapaSignature = req.headers['chapa-signature'] as string
-    const xChapaSignature = req.headers['x-chapa-signature'] as string
+  if (WEBHOOK_SECRET) {
+    // Use raw body for signature verification if available
+    const payload = (req as any).rawBody
+      ? (req as any).rawBody.toString()
+      : JSON.stringify(req.body)
+    const expectedHash = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(payload)
+      .digest('hex')
 
-    if (WEBHOOK_SECRET) {
-      const expectedHash = crypto
-        .createHmac('sha256', WEBHOOK_SECRET)
-        .update(rawBody)
-        .digest('hex')
+    const isChapaSignatureValid = chapaSignature === expectedHash
+    const isXChapaSignatureValid = xChapaSignature === expectedHash
 
-      const isChapaSignatureValid = chapaSignature === expectedHash
-      const isXChapaSignatureValid = xChapaSignature === expectedHash
-
-      if (!isChapaSignatureValid && !isXChapaSignatureValid) {
-        console.log('❌ Invalid webhook signature')
-        res.status(401).json({
-          error: 'Invalid webhook signature',
-          message: 'Webhook verification failed',
-        })
-        return
-      }
-      console.log('✅ Webhook signature verified')
+    if (!isChapaSignatureValid && !isXChapaSignatureValid) {
+      console.log('❌ Invalid webhook signature')
+      res.status(401).json({
+        error: 'Invalid webhook signature',
+        message: 'Webhook verification failed',
+      })
+      return
     }
+    console.log('✅ Webhook signature verified')
+  }
 
-    const { tx_ref, status, currency, amount, event } = webhookData
+  try {
+    const { tx_ref, status, currency, amount, event } = req.body
 
     // Verify the transaction with Chapa
     const verificationResponse = await axios.get(
@@ -107,7 +122,10 @@ app.post('/payment-callback', async (req, res) => {
     // Increment balance on successful payment
     if (status === 'success' && event === 'charge.success') {
       try {
-        const balance = (await Balance.findOne()) || new Balance()
+        let balance = await Balance.findOne({ userId: 'default-user' })
+        if (!balance) {
+          balance = new Balance({ userId: 'default-user' })
+        }
         balance.balance += parseFloat(amount)
         balance.lastUpdated = new Date()
         await balance.save()
@@ -117,21 +135,46 @@ app.post('/payment-callback', async (req, res) => {
       }
     }
 
-    res.status(200).json({
+    // Send response immediately to prevent timeout issues
+    const responseData = {
       message: 'Callback processed successfully',
       tx_ref,
       status,
       event,
       verified: true,
-    })
+    }
+
+    res.status(200).json(responseData)
+    console.log('✅ Response sent successfully')
   } catch (error: any) {
     console.log('❌ Callback error:', error.message)
-    res.status(400).json({
-      message: 'Callback processing failed',
-      error: error.message,
-    })
+    // Only send error response if headers haven't been sent
+    if (!res.headersSent) {
+      res.status(400).json({
+        message: 'Callback processing failed',
+        error: error.message,
+      })
+    }
   }
 })
+
+// Global error handler
+app.use(
+  (
+    error: any,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    console.log('❌ Global error handler:', error.message)
+    if (!res.headersSent) {
+      res.status(500).json({
+        message: 'Internal server error',
+        error: error.message,
+      })
+    }
+  },
+)
 
 // Start Express server
 app.listen(PORT, () => {
@@ -185,7 +228,10 @@ bot.hears('💰 Make Payment', async (ctx) => {
 
 bot.hears('💳 Check Balance', async (ctx) => {
   try {
-    const balance = (await Balance.findOne()) || new Balance()
+    let balance = await Balance.findOne({ userId: 'default-user' })
+    if (!balance) {
+      balance = new Balance({ userId: 'default-user' })
+    }
     const balanceMessage = `
 💰 Current Balance:
 

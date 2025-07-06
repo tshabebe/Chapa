@@ -34,29 +34,49 @@ const app = express()
 // Enable CORS from everywhere
 app.use(cors())
 
-// Parse JSON bodies with proper configuration
-app.use(
-  express.json({
-    limit: '10mb',
-    verify: (req, res, buf) => {
+// Custom middleware for webhook endpoint
+app.use('/payment-callback', (req, res, next) => {
+  let data = ''
+
+  req.on('data', (chunk) => {
+    data += chunk
+  })
+
+  req.on('end', () => {
+    try {
       // Store raw body for signature verification
-      ;(req as any).rawBody = buf
-    },
-  }),
-)
+      ;(req as any).rawBody = Buffer.from(data)
+      // Parse JSON body
+      req.body = JSON.parse(data)
+      next()
+    } catch (error) {
+      console.log('❌ Webhook body parsing error:', error)
+      res.status(400).json({ error: 'Invalid JSON body' })
+    }
+  })
+
+  req.on('error', (error) => {
+    console.log('❌ Webhook request error:', error)
+    res.status(400).json({ error: 'Request error' })
+  })
+})
+
+// Parse JSON bodies for other routes
+app.use((req, res, next) => {
+  if (req.path !== '/payment-callback') {
+    express.json({ limit: '10mb' })(req, res, next)
+  } else {
+    next()
+  }
+})
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// Middleware to handle webhook requests more robustly
-app.use('/payment-callback', (req, res, next) => {
-  // Set timeout for webhook processing
+// Set timeouts for all requests
+app.use((req, res, next) => {
   req.setTimeout(30000) // 30 seconds
   res.setTimeout(30000) // 30 seconds
-
-  // Ensure proper content type handling
-  res.setHeader('Content-Type', 'application/json')
-
   next()
 })
 
@@ -64,6 +84,16 @@ app.use('/payment-callback', (req, res, next) => {
 app.get('/', (req, res) => {
   console.log('✅ GET / - Root endpoint hit')
   res.json({ message: 'Chapa Payment Server with Telegram Bot' })
+})
+
+// Test webhook endpoint
+app.post('/test-webhook', (req, res) => {
+  console.log('🧪 Test webhook received:', req.body)
+  res.json({
+    message: 'Test webhook received',
+    body: req.body,
+    headers: req.headers,
+  })
 })
 
 // Callback endpoint for Chapa webhook
@@ -78,7 +108,7 @@ app.post('/payment-callback', async (req, res) => {
   const xChapaSignature = req.headers['x-chapa-signature'] as string
 
   if (WEBHOOK_SECRET) {
-    // Use raw body for signature verification if available
+    // Use raw body for signature verification
     const payload = (req as any).rawBody
       ? (req as any).rawBody.toString()
       : JSON.stringify(req.body)
@@ -92,6 +122,9 @@ app.post('/payment-callback', async (req, res) => {
 
     if (!isChapaSignatureValid && !isXChapaSignatureValid) {
       console.log('❌ Invalid webhook signature')
+      console.log('Expected hash:', expectedHash)
+      console.log('Received chapa-signature:', chapaSignature)
+      console.log('Received x-chapa-signature:', xChapaSignature)
       res.status(401).json({
         error: 'Invalid webhook signature',
         message: 'Webhook verification failed',
@@ -135,16 +168,14 @@ app.post('/payment-callback', async (req, res) => {
       }
     }
 
-    // Send response immediately to prevent timeout issues
-    const responseData = {
+    // Send response immediately
+    res.status(200).json({
       message: 'Callback processed successfully',
       tx_ref,
       status,
       event,
       verified: true,
-    }
-
-    res.status(200).json(responseData)
+    })
     console.log('✅ Response sent successfully')
   } catch (error: any) {
     console.log('❌ Callback error:', error.message)

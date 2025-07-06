@@ -9,34 +9,29 @@ import Balance from './models/Balance.js'
 
 dotenv.config()
 
-// Environment variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
-const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY //Put Your Chapa Secret Key
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET // Webhook secret for signature verification
-const CALLBACK_URL = process.env.CALLBACK_URL // Callback URL
-const MONGODB_URL = process.env.MONGODB_URL // MongoDB connection URL
-const BOT_RETURN_URL = process.env.BOT_RETURN_URL // Bot return URL
+const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
+const CALLBACK_URL = process.env.CALLBACK_URL
+const MONGODB_URL = process.env.MONGODB_URL
+const BOT_RETURN_URL = process.env.BOT_RETURN_URL
 const PORT = process.env.PORT || 5000
 
 if (!TELEGRAM_BOT_TOKEN) {
   throw new Error('TELEGRAM_BOT_TOKEN is required')
 }
 
-// Connect to MongoDB
 mongoose
   .connect(MONGODB_URL || 'mongodb://localhost:27017/chapa-payments')
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.log('❌ MongoDB connection error:', err))
 
-// Create Express app
 const app = express()
 
-// Enable CORS from everywhere
 app.use(cors())
 
 app.use(express.json())
 
-// Basic routes
 app.get('/', (req, res) => {
   console.log('✅ GET / - Root endpoint hit')
   res.json({ message: 'Chapa Payment Server with Telegram Bot' })
@@ -120,7 +115,6 @@ app.post('/payment-callback', async (req, res) => {
   }
 })
 
-// Start Express server
 app.listen(PORT, () => {
   console.log(`🚀 Express server running on port ${PORT}`)
   console.log(`🌐 Webhook URL: ${CALLBACK_URL}`)

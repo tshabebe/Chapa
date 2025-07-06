@@ -34,8 +34,16 @@ const app = express()
 // Enable CORS from everywhere
 app.use(cors())
 
-// Parse JSON bodies
-app.use(express.json())
+// Parse JSON bodies for all routes except webhook
+app.use((req, res, next) => {
+  if (req.path === '/payment-callback') {
+    // For webhook, use raw body parsing
+    express.raw({ type: 'application/json' })(req, res, next)
+  } else {
+    // For other routes, use JSON parsing
+    express.json()(req, res, next)
+  }
+})
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -45,38 +53,41 @@ app.get('/', (req, res) => {
 
 // Callback endpoint for Chapa webhook
 app.post('/payment-callback', async (req, res) => {
-  console.log(
-    '🔔 Payment callback received:',
-    req.body.event || 'unknown event',
-  )
-
-  // Verify webhook signature
-  const chapaSignature = req.headers['chapa-signature'] as string
-  const xChapaSignature = req.headers['x-chapa-signature'] as string
-
-  if (WEBHOOK_SECRET) {
-    const payload = JSON.stringify(req.body)
-    const expectedHash = crypto
-      .createHmac('sha256', WEBHOOK_SECRET)
-      .update(payload)
-      .digest('hex')
-
-    const isChapaSignatureValid = chapaSignature === expectedHash
-    const isXChapaSignatureValid = xChapaSignature === expectedHash
-
-    if (!isChapaSignatureValid && !isXChapaSignatureValid) {
-      console.log('❌ Invalid webhook signature')
-      res.status(401).json({
-        error: 'Invalid webhook signature',
-        message: 'Webhook verification failed',
-      })
-      return
-    }
-    console.log('✅ Webhook signature verified')
-  }
-
   try {
-    const { tx_ref, status, currency, amount, event } = req.body
+    // Parse the raw body for webhook verification
+    const rawBody = req.body.toString('utf8')
+    const webhookData = JSON.parse(rawBody)
+
+    console.log(
+      '🔔 Payment callback received:',
+      webhookData.event || 'unknown event',
+    )
+
+    // Verify webhook signature
+    const chapaSignature = req.headers['chapa-signature'] as string
+    const xChapaSignature = req.headers['x-chapa-signature'] as string
+
+    if (WEBHOOK_SECRET) {
+      const expectedHash = crypto
+        .createHmac('sha256', WEBHOOK_SECRET)
+        .update(rawBody)
+        .digest('hex')
+
+      const isChapaSignatureValid = chapaSignature === expectedHash
+      const isXChapaSignatureValid = xChapaSignature === expectedHash
+
+      if (!isChapaSignatureValid && !isXChapaSignatureValid) {
+        console.log('❌ Invalid webhook signature')
+        res.status(401).json({
+          error: 'Invalid webhook signature',
+          message: 'Webhook verification failed',
+        })
+        return
+      }
+      console.log('✅ Webhook signature verified')
+    }
+
+    const { tx_ref, status, currency, amount, event } = webhookData
 
     // Verify the transaction with Chapa
     const verificationResponse = await axios.get(

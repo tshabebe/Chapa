@@ -6,7 +6,7 @@ import axios from 'axios'
 import crypto from 'crypto'
 import mongoose from 'mongoose'
 import Balance from './models/Balance.js'
-import Withdrawal from './models/Withdrawal.js'
+
 import { WithdrawalService } from './services/withdrawalService.js'
 import type { BankInfo } from './services/withdrawalService.js'
 
@@ -140,9 +140,30 @@ app.get('/withdrawal/verify/:reference', async (req, res) => {
 })
 
 // Get withdrawal history endpoint
-app.get('/withdrawal/history/:userId?', async (req, res) => {
+app.get('/withdrawal/history', async (req, res) => {
   try {
-    const userId = req.params.userId || 'default-user'
+    const userId = (req.query.userId as string) || 'default-user'
+    console.log('📋 Fetching withdrawal history for:', userId)
+
+    const withdrawals = await WithdrawalService.getWithdrawalHistory(userId)
+
+    res.status(200).json({
+      message: 'Withdrawal history retrieved successfully',
+      data: withdrawals,
+    })
+  } catch (error: any) {
+    console.log('❌ Withdrawal history error:', error.message)
+    res.status(400).json({
+      message: 'Failed to fetch withdrawal history',
+      error: error.message,
+    })
+  }
+})
+
+// Get withdrawal history for specific user endpoint
+app.get('/withdrawal/history/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId
     console.log('📋 Fetching withdrawal history for:', userId)
 
     const withdrawals = await WithdrawalService.getWithdrawalHistory(userId)
@@ -223,6 +244,7 @@ const mainMenu = new Keyboard()
   .text('🏦 Withdraw Funds')
   .text('📋 Withdrawal History')
   .row()
+  .text('🔍 Check Withdrawal Status')
   .text('❓ Help')
 
 // Start command
@@ -293,6 +315,10 @@ bot.hears('❓ Help', async (ctx) => {
 4. 📋 Withdrawal History
    • View recent withdrawals
 
+5. 🔍 Check Withdrawal Status
+   • Verify withdrawal status with Chapa
+   • Get real-time updates
+
 Payment Process:
 • Your payment will be automatically confirmed via webhook
 • Balance will be updated automatically after successful payment
@@ -302,6 +328,7 @@ Withdrawal Process:
 • Withdrawals are processed automatically
 • Funds are sent directly to your bank account
 • Processing time: 1-3 business days
+• Use "Check Withdrawal Status" to verify completion
 
 For support, contact: @your_support_handle
   `
@@ -383,6 +410,61 @@ bot.hears('📋 Withdrawal History', async (ctx) => {
         reply_markup: mainMenu,
       },
     )
+  }
+})
+
+bot.hears('🔍 Check Withdrawal Status', async (ctx) => {
+  try {
+    const withdrawals = await WithdrawalService.getWithdrawalHistory(
+      'default-user',
+    )
+
+    if (withdrawals.length === 0) {
+      await ctx.reply('📋 No withdrawals found to check.', {
+        reply_markup: mainMenu,
+      })
+      return
+    }
+
+    await ctx.reply(
+      '🔍 Checking withdrawal statuses... This may take a moment.',
+    )
+
+    let statusMessage = '🔍 Withdrawal Status Update:\n\n'
+    let updatedCount = 0
+
+    // Check status for recent withdrawals (last 5)
+    for (const withdrawal of withdrawals.slice(0, 5)) {
+      try {
+        const result = await WithdrawalService.verifyWithdrawal(
+          withdrawal.reference,
+        )
+
+        if (result.data?.status && result.data.status !== withdrawal.status) {
+          statusMessage += `✅ ${withdrawal.amount} ETB: ${withdrawal.status} → ${result.data.status}\n`
+          updatedCount++
+        } else {
+          statusMessage += `⏳ ${withdrawal.amount} ETB: ${withdrawal.status}\n`
+        }
+      } catch (error: any) {
+        statusMessage += `❌ ${withdrawal.amount} ETB: Error checking status\n`
+      }
+    }
+
+    if (updatedCount > 0) {
+      statusMessage += `\n✅ Updated ${updatedCount} withdrawal statuses!`
+    } else {
+      statusMessage += `\n📋 No status updates found.`
+    }
+
+    await ctx.reply(statusMessage, {
+      reply_markup: mainMenu,
+    })
+  } catch (error: any) {
+    console.log('❌ Withdrawal status check error:', error.message)
+    await ctx.reply('❌ Failed to check withdrawal status. Please try again.', {
+      reply_markup: mainMenu,
+    })
   }
 })
 

@@ -50,9 +50,7 @@ export class WithdrawalService {
   }
 
   // Initiate withdrawal
-  static async initiateWithdrawal(
-    request: WithdrawalRequest,
-  ): Promise<Withdrawal> {
+  static async initiateWithdrawal(request: WithdrawalRequest): Promise<any> {
     const {
       amount,
       accountName,
@@ -170,7 +168,7 @@ export class WithdrawalService {
   // Get user's withdrawal history
   static async getWithdrawalHistory(
     userId: string = 'default-user',
-  ): Promise<Withdrawal[]> {
+  ): Promise<any[]> {
     try {
       return await Withdrawal.find({ userId }).sort({ createdAt: -1 }).limit(10)
     } catch (error: any) {
@@ -182,7 +180,7 @@ export class WithdrawalService {
   // Get withdrawal by reference
   static async getWithdrawalByReference(
     reference: string,
-  ): Promise<Withdrawal | null> {
+  ): Promise<any | null> {
     try {
       return await Withdrawal.findOne({ reference })
     } catch (error: any) {

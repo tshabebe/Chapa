@@ -1,12 +1,13 @@
 import type { Request, Response } from 'express'
 import { WithdrawalService } from '../services/withdrawalService.js'
 import { BalanceService } from '../services/BalanceService.js'
+import { logger } from '../utils/logger.js'
 
 export class WithdrawalController {
   // Get available banks
   static async getBanks(req: Request, res: Response) {
     try {
-      console.log('🏦 Fetching available banks')
+      logger.info('🏦 Fetching available banks')
 
       const banks = await WithdrawalService.getBanks()
 
@@ -16,7 +17,7 @@ export class WithdrawalController {
         data: banks,
       })
     } catch (error: any) {
-      console.log('❌ Banks fetch error:', error.message)
+      logger.error('❌ Banks fetch error:', error.message)
       res.status(400).json({
         success: false,
         message: 'Failed to fetch banks',
@@ -37,7 +38,7 @@ export class WithdrawalController {
         userId = 'default-user',
       } = req.body
 
-      console.log('🏦 Initiating withdrawal:', {
+      logger.info('🏦 Initiating withdrawal:', {
         amount,
         accountName,
         bankName,
@@ -70,7 +71,7 @@ export class WithdrawalController {
         data: withdrawal,
       })
     } catch (error: any) {
-      console.log('❌ Withdrawal error:', error.message)
+      logger.error('❌ Withdrawal error:', error.message)
       res.status(400).json({
         success: false,
         message: 'Withdrawal failed',
@@ -89,7 +90,7 @@ export class WithdrawalController {
           message: 'Reference parameter is required',
         })
       }
-      console.log('🔍 Verifying withdrawal:', reference)
+      logger.info('🔍 Verifying withdrawal:', { reference })
 
       const result = await WithdrawalService.verifyWithdrawal(reference)
 
@@ -99,7 +100,7 @@ export class WithdrawalController {
         data: result,
       })
     } catch (error: any) {
-      console.log('❌ Withdrawal verification error:', error.message)
+      logger.error('❌ Withdrawal verification error:', error.message)
       res.status(400).json({
         success: false,
         message: 'Withdrawal verification failed',
@@ -113,7 +114,7 @@ export class WithdrawalController {
     try {
       const userId =
         (req.query.userId as string) || req.params.userId || 'default-user'
-      console.log('📋 Fetching withdrawal history for:', userId)
+      logger.info('📋 Fetching withdrawal history for:', { userId })
 
       const withdrawals = await WithdrawalService.getWithdrawalHistory(userId)
 
@@ -123,7 +124,7 @@ export class WithdrawalController {
         data: withdrawals,
       })
     } catch (error: any) {
-      console.log('❌ Withdrawal history error:', error.message)
+      logger.error('❌ Withdrawal history error:', error.message)
       res.status(400).json({
         success: false,
         message: 'Failed to fetch withdrawal history',
@@ -142,7 +143,7 @@ export class WithdrawalController {
           message: 'Reference parameter is required',
         })
       }
-      console.log('🔍 Fetching withdrawal by reference:', reference)
+      logger.info('🔍 Fetching withdrawal by reference:', { reference })
 
       const withdrawal = await WithdrawalService.getWithdrawalByReference(
         reference,
@@ -161,7 +162,7 @@ export class WithdrawalController {
         data: withdrawal,
       })
     } catch (error: any) {
-      console.log('❌ Withdrawal fetch error:', error.message)
+      logger.error('❌ Withdrawal fetch error:', error.message)
       res.status(400).json({
         success: false,
         message: 'Failed to fetch withdrawal',

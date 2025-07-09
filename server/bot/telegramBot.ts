@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, Keyboard } from 'grammy'
+import { Bot, Keyboard } from 'grammy'
 import { TelegramBotController } from '../controllers/TelegramBotController.js'
 import { SessionService } from '../services/SessionService.js'
 import { UserService } from '../services/UserService.js'

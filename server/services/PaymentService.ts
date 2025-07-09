@@ -1,15 +1,15 @@
 import type { Request } from 'express'
 import axios from 'axios'
 import crypto from 'crypto'
+import { logger } from '../utils/logger.js'
 
 const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
+const CALLBACK_URL = process.env.CALLBACK_URL
+const BOT_RETURN_URL = process.env.BOT_RETURN_URL
 
 export interface PaymentRequest {
   amount: string
   currency: string
-  email: string
-  first_name: string
-  last_name: string
   phone_number: string
   tx_ref: string
   return_url?: string
@@ -23,9 +23,6 @@ export class PaymentService {
       const requestPayload = {
         amount: request.amount,
         currency: request.currency,
-        email: request.email,
-        first_name: request.first_name,
-        last_name: request.last_name,
         phone_number: request.phone_number,
         tx_ref: request.tx_ref,
         return_url: request.return_url,
@@ -35,7 +32,7 @@ export class PaymentService {
         'meta[hide_receipt]': 'false',
       }
 
-      console.log('📤 Sending request to Chapa:', requestPayload)
+      logger.info('📤 Sending request to Chapa:', requestPayload)
 
       const response = await axios.post(
         'https://api.chapa.co/v1/transaction/initialize',
@@ -48,7 +45,7 @@ export class PaymentService {
         },
       )
 
-      console.log('✅ Chapa API response:', response.data)
+      logger.info('✅ Chapa API response:', response.data)
 
       if (!response.data.data?.checkout_url) {
         throw new Error('No payment URL received from Chapa API')
@@ -56,7 +53,7 @@ export class PaymentService {
 
       return response.data
     } catch (error: any) {
-      console.log('❌ Payment initialization error:', error.message)
+      logger.error('❌ Payment initialization error:', error.message)
       throw new Error(`Payment initialization failed: ${error.message}`)
     }
   }
@@ -78,7 +75,7 @@ export class PaymentService {
 
       return isChapaSignatureValid || isXChapaSignatureValid
     } catch (error: any) {
-      console.log('❌ Webhook signature verification error:', error.message)
+      logger.error('❌ Webhook signature verification error:', error.message)
       return false
     }
   }
@@ -96,10 +93,10 @@ export class PaymentService {
         },
       )
 
-      console.log('✅ Verification response:', response.data)
+      logger.info('✅ Verification response:', response.data)
       return response.data
     } catch (error: any) {
-      console.log('❌ Transaction verification error:', error.message)
+      logger.error('❌ Transaction verification error:', error.message)
       throw new Error(`Transaction verification failed: ${error.message}`)
     }
   }
@@ -119,7 +116,7 @@ export class PaymentService {
 
       return response.data
     } catch (error: any) {
-      console.log('❌ Payment status error:', error.message)
+      logger.error('❌ Payment status error:', error.message)
       throw new Error(`Failed to get payment status: ${error.message}`)
     }
   }
@@ -130,11 +127,10 @@ export class PaymentService {
     const request: PaymentRequest = {
       amount: amount.toString(),
       currency: 'ETB',
-      email: `${userId}@example.com`,
-      first_name: userId,
-      last_name: 'User',
       phone_number: mobile,
       tx_ref,
+      callback_url: CALLBACK_URL, // Add the callback URL from environment
+      return_url: BOT_RETURN_URL,
     }
     return this.initializePayment(request)
   }

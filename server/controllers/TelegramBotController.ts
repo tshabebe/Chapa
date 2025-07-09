@@ -378,8 +378,7 @@ For support, contact: @your_support_handle
 
 💰 Amount: ${amount} ETB
 📱 Mobile: ${mobile}
-🔗 Payment Link: ${payment.checkoutUrl}
-📋 Reference: ${payment.reference}
+🔗 Payment Link: ${payment.data.checkout_url}
 
 Click the link above to complete your payment.
 Your balance will be updated automatically after payment.
@@ -396,7 +395,7 @@ Your balance will be updated automatically after payment.
       logger.info(`Payment created for user ${telegramId}`, {
         userId: user._id,
         amount,
-        reference: payment.reference,
+        reference: payment.data.reference,
       })
     } catch (error) {
       logger.error('Error processing payment:', error)

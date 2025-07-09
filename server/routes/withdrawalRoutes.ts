@@ -18,15 +18,16 @@ router.get('/verify/:reference', (req, res) => {
   WithdrawalController.verifyWithdrawal(req, res)
 })
 
-// Get withdrawal history
+// Get withdrawal history (specific routes must come before parameterized route)
 router.get('/history', (req, res) => {
   WithdrawalController.getWithdrawalHistory(req, res)
 })
+
 router.get('/history/:userId', (req, res) => {
   WithdrawalController.getWithdrawalHistory(req, res)
 })
 
-// Get withdrawal by reference
+// Get withdrawal by reference (parameterized route comes last)
 router.get('/:reference', (req, res) => {
   WithdrawalController.getWithdrawalByReference(req, res)
 })

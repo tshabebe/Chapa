@@ -1,6 +1,7 @@
 import axios from 'axios'
 import Withdrawal from '../models/Withdrawal.js'
 import { BalanceService } from './BalanceService.js'
+import { logger } from '../utils/logger.js'
 
 const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
 
@@ -32,7 +33,7 @@ export class WithdrawalService {
 
       return response.data.data || []
     } catch (error: any) {
-      console.log('❌ Error fetching banks:', error.message)
+      logger.error('❌ Error fetching banks:', error.message)
       throw new Error('Failed to fetch banks')
     }
   }
@@ -42,7 +43,7 @@ export class WithdrawalService {
     try {
       return await BalanceService.checkBalance(userId, amount)
     } catch (error: any) {
-      console.log('❌ Error checking balance:', error.message)
+      logger.error('❌ Error checking balance:', error.message)
       return false
     }
   }
@@ -91,7 +92,7 @@ export class WithdrawalService {
         bank_code: bankCode,
       }
 
-      console.log('📤 Initiating transfer with Chapa:', transferPayload)
+      logger.info('📤 Initiating transfer with Chapa:', transferPayload)
 
       const response = await axios.post(
         'https://api.chapa.co/v1/transfers',
@@ -104,7 +105,7 @@ export class WithdrawalService {
         },
       )
 
-      console.log('✅ Chapa transfer response:', response.data)
+      logger.info('✅ Chapa transfer response:', response.data)
 
       if (response.data.status === 'success') {
         // Update withdrawal status
@@ -113,7 +114,7 @@ export class WithdrawalService {
         // Deduct from balance
         await BalanceService.decrementBalance(userId, amount)
 
-        console.log('💰 Balance deducted by:', amount)
+        logger.info('💰 Balance deducted by:', { amount })
       } else {
         await withdrawal.updateStatus(
           'failed',
@@ -125,7 +126,7 @@ export class WithdrawalService {
 
       return withdrawal
     } catch (error: any) {
-      console.log('❌ Withdrawal error:', error.message)
+      logger.error('❌ Withdrawal error:', error.message)
       throw error
     }
   }
@@ -143,7 +144,7 @@ export class WithdrawalService {
         },
       )
 
-      console.log('✅ Transfer verification response:', response.data)
+      logger.info('✅ Transfer verification response:', response.data)
 
       // Update withdrawal status based on response
       const withdrawal = await Withdrawal.findOne({ reference })
@@ -154,7 +155,7 @@ export class WithdrawalService {
 
       return response.data
     } catch (error: any) {
-      console.log('❌ Transfer verification error:', error.message)
+      logger.error('❌ Transfer verification error:', error.message)
       throw error
     }
   }
@@ -166,7 +167,7 @@ export class WithdrawalService {
     try {
       return await Withdrawal.find({ userId }).sort({ createdAt: -1 }).limit(10)
     } catch (error: any) {
-      console.log('❌ Error fetching withdrawal history:', error.message)
+      logger.error('❌ Error fetching withdrawal history:', error.message)
       return []
     }
   }
@@ -178,7 +179,7 @@ export class WithdrawalService {
     try {
       return await Withdrawal.findOne({ reference })
     } catch (error: any) {
-      console.log('❌ Error fetching withdrawal:', error.message)
+      logger.error('❌ Error fetching withdrawal:', error.message)
       return null
     }
   }

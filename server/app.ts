@@ -21,8 +21,8 @@ const PORT = process.env.PORT || 5000
 // Connect to MongoDB
 mongoose
   .connect(MONGODB_URL || 'mongodb://localhost:27017/chapa-payments')
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch((err) => console.log('❌ MongoDB connection error:', err))
+  .then(() => logger.info('✅ Connected to MongoDB'))
+  .catch((err) => logger.error('❌ MongoDB connection error:', err))
 
 const app = express()
 
@@ -32,7 +32,7 @@ app.use(express.json())
 
 // Health check endpoint
 app.get('/', (req, res) => {
-  console.log('✅ GET / - Root endpoint hit')
+  logger.info('✅ GET / - Root endpoint hit')
   res.json({
     message: 'Chapa Payment Server with Telegram Bot',
     status: 'running',
@@ -45,37 +45,6 @@ app.use('/api/payments', paymentRoutes)
 app.use('/api/withdrawals', withdrawalRoutes)
 app.use('/api/balance', balanceRoutes)
 
-// Legacy endpoints for backward compatibility
-app.post('/payment-callback', (req, res) => {
-  // Redirect to new endpoint
-  req.url = '/api/payments/callback'
-  app._router.handle(req, res)
-})
-
-app.get('/withdrawal/verify/:reference', (req, res) => {
-  // Redirect to new endpoint
-  req.url = `/api/withdrawals/verify/${req.params.reference}`
-  app._router.handle(req, res)
-})
-
-app.get('/withdrawal/history', (req, res) => {
-  // Redirect to new endpoint
-  req.url = '/api/withdrawals/history'
-  app._router.handle(req, res)
-})
-
-app.get('/withdrawal/history/:userId', (req, res) => {
-  // Redirect to new endpoint
-  req.url = `/api/withdrawals/history/${req.params.userId}`
-  app._router.handle(req, res)
-})
-
-app.get('/banks', (req, res) => {
-  // Redirect to new endpoint
-  req.url = '/api/withdrawals/banks'
-  app._router.handle(req, res)
-})
-
 // Error handling middleware
 app.use(
   (
@@ -84,7 +53,7 @@ app.use(
     res: express.Response,
     next: express.NextFunction,
   ) => {
-    console.error('❌ Server error:', err)
+    logger.error('❌ Server error:', err)
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -96,19 +65,19 @@ app.use(
   },
 )
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-    path: req.originalUrl,
-  })
-})
+// // 404 handler
+// app.use('*', (req, res) => {
+//   res.status(404).json({
+//     success: false,
+//     message: 'Endpoint not found',
+//     path: req.originalUrl,
+//   })
+// })
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Express server running on port ${PORT}`)
-  console.log(`🌐 Webhook URL: ${process.env.CALLBACK_URL}`)
+  logger.info(`🚀 Express server running on port ${PORT}`)
+  logger.info(`🌐 Webhook URL: ${process.env.CALLBACK_URL}`)
 })
 
 // Start the Telegram bot

@@ -10,10 +10,10 @@
     "typescript": "^5"
   },
   "scripts": {
-    "dev:server": "bun run server/server.ts",
+    "dev:server": "bun run server/app.ts",
     "dev:client": "bun run --cwd=client dev",
     "dev": "bun run dev:server & bun run dev:client",
-    "start:server": "bun run server/server.ts",
+    "start:server": "bun run server/app.ts",
     "start:client": "bun run --cwd=client build && bun run --cwd=client preview",
     "start": "bun run start:server & bun run start:client"
   }

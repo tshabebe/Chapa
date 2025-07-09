@@ -6,7 +6,6 @@ const balanceSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      default: 'default-user', // Single user for now
     },
     balance: {
       type: Number,
@@ -37,9 +36,7 @@ balanceSchema.methods.incrementBalance = async function (amount: number) {
 }
 
 // Static method to get or create balance
-balanceSchema.statics.getOrCreateBalance = async function (
-  userId: string = 'default-user',
-) {
+balanceSchema.statics.getOrCreateBalance = async function (userId: string) {
   let balance = await this.findOne({ userId })
 
   if (!balance) {
@@ -61,7 +58,7 @@ interface IBalance extends mongoose.Document {
 
 // Define the interface for the Balance model
 interface IBalanceModel extends mongoose.Model<IBalance> {
-  getOrCreateBalance(userId?: string): Promise<IBalance>
+  getOrCreateBalance(userId: string): Promise<IBalance>
 }
 
 const Balance = mongoose.model<IBalance, IBalanceModel>(

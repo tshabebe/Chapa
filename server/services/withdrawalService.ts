@@ -1,6 +1,6 @@
 import axios from 'axios'
-import Balance from '../models/Balance.js'
 import Withdrawal from '../models/Withdrawal.js'
+import { BalanceService } from './BalanceService.js'
 
 const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
 
@@ -40,9 +40,7 @@ export class WithdrawalService {
   // Check if user has sufficient balance
   static async checkBalance(userId: string, amount: number): Promise<boolean> {
     try {
-      const balance =
-        (await Balance.findOne({ userId })) || new Balance({ userId })
-      return balance.balance >= amount
+      return await BalanceService.checkBalance(userId, amount)
     } catch (error: any) {
       console.log('❌ Error checking balance:', error.message)
       return false
@@ -113,11 +111,7 @@ export class WithdrawalService {
         await withdrawal.updateStatus('processing', response.data.data?.id)
 
         // Deduct from balance
-        const balance =
-          (await Balance.findOne({ userId })) || new Balance({ userId })
-        balance.balance -= amount
-        balance.lastUpdated = new Date()
-        await balance.save()
+        await BalanceService.decrementBalance(userId, amount)
 
         console.log('💰 Balance deducted by:', amount)
       } else {
@@ -187,5 +181,25 @@ export class WithdrawalService {
       console.log('❌ Error fetching withdrawal:', error.message)
       return null
     }
+  }
+
+  // Create withdrawal (alias for initiateWithdrawal for backward compatibility)
+  static async createWithdrawal(
+    userId: string,
+    amount: number,
+    accountName: string,
+    accountNumber: string,
+    bankCode: number,
+    bankName: string,
+  ) {
+    const request: WithdrawalRequest = {
+      amount,
+      accountName,
+      accountNumber,
+      bankCode,
+      bankName,
+      userId,
+    }
+    return this.initiateWithdrawal(request)
   }
 }

@@ -19,6 +19,10 @@
     "mongoose": "^8.16.1"
   },
   "scripts": {
-    "start": "bun run server.ts"
+    "start": "bun run app.ts",
+    "dev": "bun run --watch app.ts",
+    "server": "bun run server.ts",
+    "bot": "bun run app.ts",
+    "typescript": "tsc"
   }
 }

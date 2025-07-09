@@ -1,17 +1,23 @@
-import bot from './server'
+import { setupTelegramBot } from './bot/telegramBot.js'
 
 console.log('🤖 Starting Telegram Payment Bot...')
 
+const bot = setupTelegramBot()
+
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down bot...')
-  bot.stop()
+  if (bot) {
+    await bot.stop()
+  }
   process.exit(0)
 })
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down bot...')
-  bot.stop()
+  if (bot) {
+    await bot.stop()
+  }
   process.exit(0)
 })
 

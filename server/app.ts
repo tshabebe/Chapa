@@ -30,6 +30,7 @@ const app = express()
 // Middleware
 app.use(cors())
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -40,8 +41,9 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   })
 })
-app.post('/callback', (res, req) => {
-  PaymentController.handlePaymentCallback(res, req)
+app.post('/callback', (req, res) => {
+  console.log(req.body)
+  PaymentController.handlePaymentCallback(req, res)
 })
 
 // API Routes

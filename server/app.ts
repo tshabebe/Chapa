@@ -29,7 +29,40 @@ const app = express()
 
 // Middleware
 app.use(cors())
-app.use(express.json())
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  logger.info(
+    `📥 ${req.method} ${req.originalUrl} - Content-Length: ${req.headers['content-length']}`,
+  )
+  next()
+})
+
+// Raw body parsing for webhook signature verification
+app.use('/callback', express.raw({ type: 'application/json', limit: '10mb' }))
+app.use(
+  '/api/payments/callback',
+  express.raw({ type: 'application/json', limit: '10mb' }),
+)
+
+// Configure body parsing with proper limits and error handling
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+      // Log the actual buffer length for debugging
+      logger.info(`📦 Request buffer length: ${buf.length}`)
+      logger.info(`📦 Content-Length header: ${req.headers['content-length']}`)
+    },
+  }),
+)
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb',
+  }),
+)
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -40,10 +73,15 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   })
 })
-app.post('/callback', (res, req) => {
-  console.log(req, res)
-  console.log(res.headers)
-  console.log(req.header)
+
+// Fix the callback endpoint with correct parameter order
+app.post('/callback', (req, res) => {
+  logger.info('🔔 Callback received on /callback')
+  logger.info('📋 Request headers:', req.headers)
+  logger.info('📋 Request body:', req.body)
+
+  // Forward to the actual handler
+  PaymentController.handlePaymentCallback(req, res)
 })
 
 // API Routes
@@ -60,6 +98,24 @@ app.use(
     next: express.NextFunction,
   ) => {
     logger.error('❌ Server error:', err)
+
+    // Handle specific body parsing errors
+    if (err.type === 'request.size.invalid') {
+      logger.error('❌ Content length mismatch:', {
+        expected: err.expected,
+        received: err.received,
+        url: req.originalUrl,
+        method: req.method,
+        headers: req.headers,
+      })
+      res.status(400).json({
+        success: false,
+        message: 'Invalid request size',
+        error: 'Content length mismatch',
+      })
+      return
+    }
+
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -71,14 +127,23 @@ app.use(
   },
 )
 
-// // 404 handler
-// app.use('*', (req, res) => {
-//   res.status(404).json({
-//     success: false,
-//     message: 'Endpoint not found',
-//     path: req.originalUrl,
-//   })
-// })
+// Enable 404 handler for debugging
+app.use('*', (req, res) => {
+  logger.error(`❌ 404 - Endpoint not found: ${req.method} ${req.originalUrl}`)
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found',
+    path: req.originalUrl,
+    method: req.method,
+    availableEndpoints: [
+      'GET /',
+      'POST /callback',
+      'POST /api/payments/initialize',
+      'POST /api/payments/callback',
+      'GET /api/payments/status/:tx_ref',
+    ],
+  })
+})
 
 // Start server
 app.listen(PORT, () => {

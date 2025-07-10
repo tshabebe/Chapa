@@ -61,17 +61,43 @@ export class PaymentService {
   // Verify webhook signature
   static verifyWebhookSignature(req: Request, webhookSecret: string): boolean {
     try {
-      const chapaSignature = req.headers['chapa-signature'] as string
+      // Debug: Log all headers to see what's actually being received
+      logger.info('🔍 All headers received:', req.headers)
+
+      // Check for both possible header names (case-sensitive)
+      const chapaSignature = req.headers['Chapa-Signature'] as string // Capital C and S
       const xChapaSignature = req.headers['x-chapa-signature'] as string
 
-      const payload = JSON.stringify(req.body)
+      logger.info('🔍 Chapa-Signature header:', chapaSignature)
+      logger.info('🔍 x-chapa-signature header:', xChapaSignature)
+
+      // Get the raw payload for signature verification
+      let payload: string
+      if (Buffer.isBuffer(req.body)) {
+        // Use raw buffer for signature verification
+        payload = req.body.toString('utf8')
+        logger.info('🔍 Using raw buffer payload for signature verification')
+      } else {
+        // Use JSON stringified body
+        payload = JSON.stringify(req.body)
+        logger.info(
+          '🔍 Using JSON stringified payload for signature verification',
+        )
+      }
+
       const expectedHash = crypto
         .createHmac('sha256', webhookSecret)
         .update(payload)
         .digest('hex')
 
+      logger.info('🔍 Expected hash:', expectedHash)
+      logger.info('🔍 Request payload:', payload)
+
       const isChapaSignatureValid = chapaSignature === expectedHash
       const isXChapaSignatureValid = xChapaSignature === expectedHash
+
+      logger.info('🔍 Chapa-Signature valid:', isChapaSignatureValid)
+      logger.info('🔍 x-chapa-signature valid:', isXChapaSignatureValid)
 
       return isChapaSignatureValid || isXChapaSignatureValid
     } catch (error: any) {

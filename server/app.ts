@@ -77,16 +77,6 @@ app.post('/callback', (res, req) => {
   PaymentController.handlePaymentCallback(res, req)
 })
 
-// Fix the callback endpoint with correct parameter order
-app.post('/callback', (req, res) => {
-  logger.info('🔔 Callback received on /callback')
-  logger.info('📋 Request headers:', req.headers)
-  logger.info('📋 Request body:', req.body)
-
-  // Forward to the actual handler
-  PaymentController.handlePaymentCallback(req, res)
-})
-
 // API Routes
 app.use('/api/payments', paymentRoutes)
 app.use('/api/withdrawals', withdrawalRoutes)

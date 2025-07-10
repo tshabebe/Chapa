@@ -73,6 +73,9 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   })
 })
+app.post('/callback', (res, req) => {
+  PaymentController.handlePaymentCallback(res, req)
+})
 
 // Fix the callback endpoint with correct parameter order
 app.post('/callback', (req, res) => {

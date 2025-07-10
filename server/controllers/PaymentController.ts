@@ -13,8 +13,6 @@ export class PaymentController {
         amount,
         currency = 'ETB',
         email,
-        first_name,
-        last_name,
         phone_number,
         tx_ref,
         return_url,

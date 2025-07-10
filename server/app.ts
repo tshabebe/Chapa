@@ -12,6 +12,7 @@ import balanceRoutes from './routes/balanceRoutes.js'
 import { setupTelegramBot } from './bot/telegramBot.js'
 import { MaintenanceService } from './services/MaintenanceService.js'
 import { logger } from './utils/logger.js'
+import { PaymentController } from './controllers/PaymentController.js'
 
 dotenv.config()
 
@@ -38,6 +39,9 @@ app.get('/', (req, res) => {
     status: 'running',
     timestamp: new Date().toISOString(),
   })
+})
+app.post('/callback', (res, req) => {
+  PaymentController.handlePaymentCallback(res, req)
 })
 
 // API Routes

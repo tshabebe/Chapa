@@ -17,6 +17,7 @@ export class PaymentController {
         tx_ref,
         return_url,
         callback_url,
+        userId, // Add userId to track who's making the payment
       } = req.body
 
       logger.info('📤 Initializing payment:', {
@@ -24,6 +25,7 @@ export class PaymentController {
         currency,
         email,
         tx_ref,
+        userId,
       })
 
       const paymentData = await PaymentService.initializePayment({
@@ -33,6 +35,7 @@ export class PaymentController {
         tx_ref,
         return_url,
         callback_url,
+        userId: userId ? parseInt(userId.toString()) : undefined,
       })
 
       res.status(200).json({
@@ -53,14 +56,37 @@ export class PaymentController {
   // Handle payment callback
   static async handlePaymentCallback(req: Request, res: Response) {
     try {
-      logger.info(
-        '🔔 Payment callback received:',
-        req.body.event || 'unknown event',
-      )
+      logger.info('🔔 Payment callback received')
+      logger.info('📋 Request method:', req.method)
+      logger.info('📋 Request URL:', req.originalUrl)
+      logger.info('📋 Request headers:', req.headers)
+
+      // Handle raw body for webhook signature verification
+      let body = req.body
+      if (Buffer.isBuffer(req.body)) {
+        // Convert raw buffer to string for logging
+        const rawBody = req.body.toString('utf8')
+        logger.info('📋 Raw request body:', rawBody)
+
+        try {
+          body = JSON.parse(rawBody)
+        } catch (parseError) {
+          logger.error('❌ Failed to parse JSON body:', parseError)
+          return res.status(400).json({
+            error: 'Invalid JSON body',
+            message: 'Failed to parse request body',
+          })
+        }
+      } else {
+        logger.info('📋 Request body:', req.body)
+      }
+
+      logger.info('📋 Event type:', body.event || 'unknown event')
 
       // Verify webhook signature
       const webhookSecret = process.env.WEBHOOK_SECRET
       if (webhookSecret) {
+        logger.info('🔍 Webhook secret found, verifying signature...')
         const isValid = PaymentService.verifyWebhookSignature(
           req,
           webhookSecret,
@@ -73,9 +99,26 @@ export class PaymentController {
           })
         }
         logger.info('✅ Webhook signature verified')
+      } else {
+        logger.warn(
+          '⚠️ No WEBHOOK_SECRET found, skipping signature verification',
+        )
       }
 
-      const { tx_ref, status, currency, amount, event } = req.body
+      const { tx_ref, status, currency, amount, event } = body
+
+      // Find the payment record to get the actual user ID
+      const payment = await PaymentService.findPaymentByTxRef(tx_ref)
+
+      if (!payment) {
+        logger.error('❌ Payment not found for tx_ref:', tx_ref)
+        return res.status(404).json({
+          error: 'Payment not found',
+          message: 'No payment record found for this transaction',
+        })
+      }
+
+      logger.info('✅ Found payment record for user:', payment.userId)
 
       // Verify transaction with payment provider
       const verificationResult = await PaymentService.verifyTransaction(tx_ref)
@@ -83,11 +126,21 @@ export class PaymentController {
 
       // Update balance on successful payment
       if (status === 'success' && event === 'charge.success') {
+        // Use the actual user ID from the payment record
         await BalanceService.incrementBalance(
-          'default-user',
+          payment.userId.toString(),
           parseFloat(amount),
         )
-        logger.info('💰 Balance incremented by:', { amount, currency })
+        logger.info(
+          `💰 Balance incremented for user: ${payment.userId}, amount: ${amount}`,
+        )
+
+        // Mark payment as successful
+        await payment.markSuccess()
+      } else if (status === 'failed' || event === 'charge.failed') {
+        // Mark payment as failed
+        await payment.markFailed()
+        logger.info('❌ Payment marked as failed for user:', payment.userId)
       }
 
       res.status(200).json({
@@ -95,6 +148,7 @@ export class PaymentController {
         tx_ref,
         status,
         event,
+        userId: payment.userId,
         verified: true,
       })
     } catch (error: any) {

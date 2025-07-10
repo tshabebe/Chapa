@@ -4,18 +4,28 @@ import { BalanceController } from '../controllers/BalanceController.js'
 const router = Router()
 
 // Get balance
-router.get('/', BalanceController.getBalance)
+router.get('/', (req, res) => {
+  BalanceController.getBalance(req, res)
+})
 
-// Check balance (specific route must come before parameterized route)
-router.get('/check', BalanceController.checkBalance)
-
-// Get balance by user ID (parameterized route comes last)
-router.get('/:userId', BalanceController.getBalance)
+// Check balance
+router.get('/check', (req, res) => {
+  BalanceController.checkBalance(req, res)
+})
 
 // Increment balance
-router.post('/increment', BalanceController.incrementBalance)
+router.post('/increment', (req, res) => {
+  BalanceController.incrementBalance(req, res)
+})
 
 // Decrement balance
-router.post('/decrement', BalanceController.decrementBalance)
+router.post('/decrement', (req, res) => {
+  BalanceController.decrementBalance(req, res)
+})
+
+// Get balance by user ID (parameterized route comes last)
+router.get('/:userId', (req, res) => {
+  BalanceController.getBalance(req, res)
+})
 
 export default router

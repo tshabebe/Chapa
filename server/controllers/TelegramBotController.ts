@@ -1,10 +1,10 @@
 import type { Context } from 'grammy'
-import { PaymentService } from '../services/PaymentService.js'
-import { WithdrawalService } from '../services/withdrawalService.js'
-import { BalanceService } from '../services/BalanceService.js'
-import { UserService } from '../services/UserService.js'
-import { SessionService } from '../services/SessionService.js'
-import { logger } from '../utils/logger.js'
+import { PaymentService } from '../services/PaymentService'
+import { WithdrawalService } from '../services/withdrawalService'
+import { BalanceService } from '../services/BalanceService'
+import { UserService } from '../services/UserService'
+import { SessionService } from '../services/SessionService'
+import { logger } from '../utils/logger'
 
 export class TelegramBotController {
   private static banksCache: any[] = []
@@ -25,17 +25,13 @@ export class TelegramBotController {
 
       const telegramId = ctx.from.id
 
-      // Check if user is blocked
-      const isBlocked = await UserService.isUserBlocked(telegramId)
-      if (isBlocked) {
-        await ctx.reply(
-          '❌ Your account has been blocked. Please contact support.',
-        )
-        return null
-      }
-
       // Get or create user
-      const user = await UserService.getOrCreateUser(ctx.from)
+      const user = await UserService.getOrCreateUser({
+        telegramId: ctx.from.id,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name,
+      })
 
       // Get or create session
       const session = await SessionService.getOrCreateSession(telegramId)
@@ -124,8 +120,8 @@ Choose an option from the menu below:
       const balanceMessage = `
 💰 Current Balance:
 
-Amount: ${balance.balance} ${balance.currency}
-Last Updated: ${balance.lastUpdated.toLocaleString()}
+Amount: ${balance} ETB
+Last Updated: ${new Date().toLocaleString()}
 
 💡 You can make payments or withdraw funds using the menu below.
       `
@@ -133,7 +129,7 @@ Last Updated: ${balance.lastUpdated.toLocaleString()}
 
       logger.info(`User ${telegramId} checked balance`, {
         userId: user._id,
-        balance: balance.balance,
+        balance: balance,
       })
     } catch (error) {
       logger.error('Error handling balance check:', error)
@@ -154,7 +150,7 @@ Last Updated: ${balance.lastUpdated.toLocaleString()}
 
       const balance = await BalanceService.getBalance(`user-${telegramId}`)
 
-      if (balance.balance <= 0) {
+      if (balance <= 0) {
         await ctx.reply(
           '❌ Insufficient balance for withdrawal. Please add funds first.',
         )
@@ -166,12 +162,12 @@ Last Updated: ${balance.lastUpdated.toLocaleString()}
         'awaiting_withdrawal_amount',
       )
       await ctx.reply(
-        `💰 Current Balance: ${balance.balance} ETB\n\n💳 Enter the withdrawal amount (e.g., 100):`,
+        `💰 Current Balance: ${balance} ETB\n\n💳 Enter the withdrawal amount (e.g., 100):`,
       )
 
       logger.info(`User ${telegramId} initiated withdrawal`, {
         userId: user._id,
-        currentBalance: balance.balance,
+        currentBalance: balance,
       })
     } catch (error) {
       logger.error('Error handling withdrawal initiation:', error)
@@ -245,25 +241,21 @@ Last Updated: ${balance.lastUpdated.toLocaleString()}
 
       const stats = await UserService.getUserStats(telegramId)
 
+      if (!stats) {
+        await ctx.reply('❌ User statistics not found.')
+        return
+      }
+
       const statsMessage = `
-📊 Your Statistics:
+📊 Your Profile:
 
-💰 Total Payments: ${stats.totalPayments}
-💳 Total Withdrawals: ${stats.totalWithdrawals}
-📈 Total Amount Paid: ${stats.totalAmountPaid} ETB
-📉 Total Amount Withdrawn: ${stats.totalAmountWithdrawn} ETB
-
-📅 Last Payment: ${
-        stats.lastPaymentDate
-          ? stats.lastPaymentDate.toLocaleDateString()
-          : 'Never'
-      }
-📅 Last Withdrawal: ${
-        stats.lastWithdrawalDate
-          ? stats.lastWithdrawalDate.toLocaleDateString()
-          : 'Never'
-      }
+👤 Name: ${stats.firstName} ${stats.lastName || ''}
+🆔 Username: ${stats.username || 'Not set'}
 📅 Member Since: ${stats.registrationDate.toLocaleDateString()}
+🕒 Last Activity: ${stats.lastActivity.toLocaleDateString()}
+✅ Status: ${stats.isActive ? 'Active' : 'Inactive'}
+
+💡 Use the menu below to manage your account.
       `
 
       await ctx.reply(statsMessage)
@@ -386,9 +378,6 @@ Your balance will be updated automatically after payment.
 
       await ctx.reply(paymentMessage)
 
-      // Update user statistics
-      await UserService.updatePaymentStats(telegramId, amount)
-
       // Clear session
       await SessionService.clearSession(telegramId)
 
@@ -470,9 +459,6 @@ You can check the status using "Check Withdrawal Status".
       `
 
       await ctx.reply(withdrawalMessage)
-
-      // Update user statistics
-      await UserService.updateWithdrawalStats(telegramId, amount)
 
       // Clear session
       await SessionService.clearSession(telegramId)

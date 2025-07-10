@@ -2,6 +2,7 @@ import type { Request } from 'express'
 import axios from 'axios'
 import crypto from 'crypto'
 import { logger } from '../utils/logger.js'
+import Payment from '../models/Payment.js'
 
 const CHAPA_AUTH_KEY = process.env.CHAPA_AUTH_KEY
 const CALLBACK_URL = process.env.CALLBACK_URL
@@ -14,6 +15,7 @@ export interface PaymentRequest {
   tx_ref: string
   return_url?: string
   callback_url?: string
+  userId?: number // Add user ID to track who made the payment
 }
 
 export class PaymentService {
@@ -49,6 +51,20 @@ export class PaymentService {
 
       if (!response.data.data?.checkout_url) {
         throw new Error('No payment URL received from Chapa API')
+      }
+
+      // Track the payment in our database
+      if (request.userId) {
+        await Payment.createPayment({
+          userId: request.userId,
+          tx_ref: request.tx_ref,
+          amount: parseFloat(request.amount),
+          currency: request.currency,
+          metadata: {
+            phoneNumber: request.phone_number,
+          },
+        })
+        logger.info('💾 Payment tracked in database for user:', request.userId)
       }
 
       return response.data
@@ -147,6 +163,17 @@ export class PaymentService {
     }
   }
 
+  // Find payment by transaction reference
+  static async findPaymentByTxRef(tx_ref: string) {
+    try {
+      const payment = await Payment.findByTxRef(tx_ref)
+      return payment
+    } catch (error: any) {
+      logger.error('❌ Error finding payment by tx_ref:', error.message)
+      return null
+    }
+  }
+
   // Create payment (alias for initializePayment for backward compatibility)
   static async createPayment(userId: string, amount: number, mobile: string) {
     const tx_ref = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -157,6 +184,7 @@ export class PaymentService {
       tx_ref,
       callback_url: CALLBACK_URL, // Add the callback URL from environment
       return_url: BOT_RETURN_URL,
+      userId: parseInt(userId), // Convert string userId to number
     }
     return this.initializePayment(request)
   }

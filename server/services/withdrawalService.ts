@@ -50,14 +50,12 @@ export class WithdrawalService {
 
   // Initiate withdrawal
   static async initiateWithdrawal(request: WithdrawalRequest): Promise<any> {
-    const {
-      amount,
-      accountName,
-      accountNumber,
-      bankCode,
-      bankName,
-      userId = 'default-user',
-    } = request
+    const { amount, accountName, accountNumber, bankCode, bankName, userId } =
+      request
+
+    if (!userId) {
+      throw new Error('User ID is required')
+    }
 
     try {
       // Check balance
@@ -161,9 +159,7 @@ export class WithdrawalService {
   }
 
   // Get user's withdrawal history
-  static async getWithdrawalHistory(
-    userId: string = 'default-user',
-  ): Promise<any[]> {
+  static async getWithdrawalHistory(userId: string): Promise<any[]> {
     try {
       return await Withdrawal.find({ userId }).sort({ createdAt: -1 }).limit(10)
     } catch (error: any) {

@@ -18,7 +18,6 @@ const userSessionSchema = new mongoose.Schema(
         'awaiting_account_name',
         'awaiting_account_number',
         'awaiting_bank_choice',
-        'awaiting_bank_confirmation',
         'processing_payment',
         'processing_withdrawal',
       ],
@@ -35,12 +34,6 @@ const userSessionSchema = new mongoose.Schema(
       accountNumber: String,
       bankCode: Number,
       bankName: String,
-    },
-    context: {
-      lastCommand: String,
-      lastMessageId: Number,
-      lastMenuMessageId: Number,
-      conversationStep: Number,
     },
     expiresAt: {
       type: Date,
@@ -71,7 +64,6 @@ userSessionSchema.methods.clearSession = async function () {
   this.state = 'idle'
   this.paymentData = {}
   this.withdrawalData = {}
-  this.context = {}
   this.isActive = false
   return await this.save()
 }
@@ -87,7 +79,6 @@ userSessionSchema.methods.updateState = async function (
   if (data) {
     if (data.paymentData) this.paymentData = data.paymentData
     if (data.withdrawalData) this.withdrawalData = data.withdrawalData
-    if (data.context) this.context = data.context
   }
 
   return await this.extendSession()
@@ -120,11 +111,6 @@ userSessionSchema.statics.cleanupExpiredSessions = async function () {
   return result.modifiedCount
 }
 
-// Static method to get active sessions count
-userSessionSchema.statics.getActiveSessionsCount = async function () {
-  return await this.countDocuments({ isActive: true })
-}
-
 // Define interfaces
 interface IUserSession extends mongoose.Document {
   telegramId: number
@@ -141,12 +127,6 @@ interface IUserSession extends mongoose.Document {
     bankCode?: number
     bankName?: string
   }
-  context?: {
-    lastCommand?: string
-    lastMessageId?: number
-    lastMenuMessageId?: number
-    conversationStep?: number
-  }
   expiresAt: Date
   isActive: boolean
   extendSession(): Promise<IUserSession>
@@ -157,7 +137,6 @@ interface IUserSession extends mongoose.Document {
 interface IUserSessionModel extends mongoose.Model<IUserSession> {
   getOrCreateSession(telegramId: number): Promise<IUserSession>
   cleanupExpiredSessions(): Promise<number>
-  getActiveSessionsCount(): Promise<number>
 }
 
 const UserSession = mongoose.model<IUserSession, IUserSessionModel>(

@@ -164,13 +164,9 @@ export function setupTelegramBot() {
 
 👥 Total Users: ${stats.totalUsers}
 ✅ Active Users: ${stats.activeUsers}
-🚫 Blocked Users: ${stats.blockedUsers}
 🔄 Active Sessions: ${stats.activeSessions}
 
-💰 Total Payments: ${stats.totalPayments}
-💳 Total Withdrawals: ${stats.totalWithdrawals}
-📈 Total Amount Paid: ${stats.totalAmountPaid} ETB
-📉 Total Amount Withdrawn: ${stats.totalAmountWithdrawn} ETB
+System is running smoothly! ✅
       `
 
       await ctx.reply(statsMessage)
@@ -193,9 +189,9 @@ export function setupTelegramBot() {
         return
       }
 
-      const activeUsers = await UserService.getActiveUsers()
+      const activeUsers = await UserService.getAllUsers()
       const usersMessage = `
-👥 Active Users (${activeUsers.length}):
+👥 All Users (${activeUsers.length}):
 
 ${activeUsers
   .slice(0, 10)
@@ -233,14 +229,10 @@ ${activeUsers.length > 10 ? `... and ${activeUsers.length - 10} more` : ''}
       // Cleanup expired sessions
       const cleanedSessions = await SessionService.cleanupExpiredSessions()
 
-      // Reset stuck sessions
-      const resetSessions = await SessionService.resetStuckSessions()
-
       const maintenanceMessage = `
 🔧 Maintenance Completed:
 
 🧹 Cleaned up ${cleanedSessions} expired sessions
-🔄 Reset ${resetSessions} stuck sessions
 
 System is running smoothly! ✅
       `
@@ -324,10 +316,16 @@ System is running smoothly! ✅
         const selectedBank = banks[bankIndex]
         if (!selectedBank) return
 
-        await SessionService.updateWithdrawalData(telegramId, {
-          bankCode: selectedBank.id,
-          bankName: selectedBank.name,
-        })
+        await SessionService.updateSessionState(
+          telegramId,
+          'awaiting_account_name',
+          {
+            withdrawalData: {
+              bankCode: selectedBank.id,
+              bankName: selectedBank.name,
+            },
+          },
+        )
 
         const withdrawalData = await SessionService.getSessionData(telegramId)
         const data = withdrawalData?.withdrawalData
@@ -447,8 +445,9 @@ async function handlePaymentAmount(ctx: any, telegramId: number, text: string) {
       return
     }
 
-    await SessionService.updatePaymentData(telegramId, { amount: text })
-    await SessionService.updateSessionState(telegramId, 'awaiting_mobile')
+    await SessionService.updateSessionState(telegramId, 'awaiting_mobile', {
+      paymentData: { amount: text },
+    })
     await ctx.reply('📱 Enter your mobile number (e.g., 0912345678):')
   } catch (error) {
     logger.error('Error handling payment amount:', error)
@@ -467,7 +466,9 @@ async function handlePaymentMobile(ctx: any, telegramId: number, text: string) {
       return
     }
 
-    await SessionService.updatePaymentData(telegramId, { mobile: text })
+    await SessionService.updateSessionState(telegramId, 'processing_payment', {
+      paymentData: { mobile: text },
+    })
     await TelegramBotController.processPayment(ctx, telegramId)
   } catch (error) {
     logger.error('Error handling payment mobile:', error)
@@ -489,17 +490,22 @@ async function handleWithdrawalAmount(
 
     // Check balance
     const balance = await (
-      await import('../services/BalanceService.js')
+      await import('../services/BalanceService')
     ).BalanceService.getBalance(`user-${telegramId}`)
-    if (amount > balance.balance) {
+    if (amount > balance) {
       await ctx.reply(
-        `❌ Insufficient balance. Your current balance is ${balance.balance} ETB. Please enter a smaller amount:`,
+        `❌ Insufficient balance. Your current balance is ${balance} ETB. Please enter a smaller amount:`,
       )
       return
     }
 
-    await SessionService.updateWithdrawalData(telegramId, { amount: text })
-    await SessionService.updateSessionState(telegramId, 'awaiting_account_name')
+    await SessionService.updateSessionState(
+      telegramId,
+      'awaiting_account_name',
+      {
+        withdrawalData: { amount: text },
+      },
+    )
     await ctx.reply('👤 Enter the account holder name:')
   } catch (error) {
     logger.error('Error handling withdrawal amount:', error)
@@ -516,10 +522,12 @@ async function handleAccountName(ctx: any, telegramId: number, text: string) {
       return
     }
 
-    await SessionService.updateWithdrawalData(telegramId, { accountName: text })
     await SessionService.updateSessionState(
       telegramId,
       'awaiting_account_number',
+      {
+        withdrawalData: { accountName: text },
+      },
     )
     await ctx.reply('📝 Enter the account number:')
   } catch (error) {
@@ -536,10 +544,13 @@ async function handleAccountNumber(ctx: any, telegramId: number, text: string) {
       return
     }
 
-    await SessionService.updateWithdrawalData(telegramId, {
-      accountNumber: text,
-    })
-    await SessionService.updateSessionState(telegramId, 'awaiting_bank_choice')
+    await SessionService.updateSessionState(
+      telegramId,
+      'awaiting_bank_choice',
+      {
+        withdrawalData: { accountNumber: text },
+      },
+    )
 
     const banks = await TelegramBotController.getBanksForSelection()
     let bankList = '🏦 Select your bank:\n\n'

@@ -1,6 +1,6 @@
 {
-  "name": "teshe",
-  "module": "./server.ts",
+  "name": "telegram-gaming-payment-server",
+  "module": "./app.ts",
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest",
@@ -21,8 +21,7 @@
   "scripts": {
     "start": "bun run app.ts",
     "dev": "bun run --watch app.ts",
-    "server": "bun run server.ts",
-    "bot": "bun run app.ts",
-    "typescript": "tsc"
+    "bot": "bun run run-bot.ts",
+    "typecheck": "tsc"
   }
 }

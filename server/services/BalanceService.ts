@@ -1,52 +1,66 @@
 import Balance from '../models/Balance.js'
+import { logger } from '../utils/logger.js'
 
 export class BalanceService {
-  // Get balance for user
-  static async getBalance(userId: string = 'default-user') {
+  // Get user balance
+  static async getBalance(userId: string): Promise<number> {
     try {
       const balance = await Balance.getOrCreateBalance(userId)
-      return balance
-    } catch (error: any) {
-      console.log('❌ Error getting balance:', error.message)
-      throw new Error(`Failed to get balance: ${error.message}`)
+      return balance.balance
+    } catch (error) {
+      logger.error('❌ Get balance error:', error)
+      throw new Error('Failed to get balance')
     }
   }
 
-  // Increment balance
+  // Increment user balance
   static async incrementBalance(
-    userId: string = 'default-user',
+    userId: string,
     amount: number,
-  ) {
+  ): Promise<number> {
     try {
       const balance = await Balance.getOrCreateBalance(userId)
-      await balance.incrementBalance(amount)
-      return balance
-    } catch (error: any) {
-      console.log('❌ Error incrementing balance:', error.message)
-      throw new Error(`Failed to increment balance: ${error.message}`)
+
+      // Increment the balance
+      balance.balance += amount
+      await balance.save()
+
+      logger.info(
+        `💰 Balance incremented for user: ${userId}, amount: ${amount}, newBalance: ${balance.balance}`,
+      )
+
+      return balance.balance
+    } catch (error) {
+      logger.error('❌ Increment balance error:', error)
+      throw new Error('Failed to increment balance')
     }
   }
 
-  // Decrement balance
+  // Decrement user balance
   static async decrementBalance(
-    userId: string = 'default-user',
+    userId: string,
     amount: number,
-  ) {
+  ): Promise<number> {
     try {
       const balance = await Balance.getOrCreateBalance(userId)
 
+      // Check if user has sufficient balance
       if (balance.balance < amount) {
         throw new Error('Insufficient balance')
       }
 
+      // Decrement the balance
       balance.balance -= amount
-      balance.lastUpdated = new Date()
       await balance.save()
 
-      return balance
-    } catch (error: any) {
-      console.log('❌ Error decrementing balance:', error.message)
-      throw new Error(`Failed to decrement balance: ${error.message}`)
+      logger.info(
+        `💰 Balance decremented for user: ${userId}, amount: ${amount}, newBalance: ${balance.balance}`,
+      )
+
+      return balance.balance
+    } catch (error) {
+      logger.error('❌ Decrement balance error:', error)
+      throw new Error('Failed to decrement balance')
     }
   }
 
@@ -55,22 +69,29 @@ export class BalanceService {
     try {
       const balance = await Balance.getOrCreateBalance(userId)
       return balance.balance >= amount
-    } catch (error: any) {
-      console.log('❌ Error checking balance:', error.message)
-      return false
+    } catch (error) {
+      logger.error('❌ Check balance error:', error)
+      throw new Error('Failed to check balance')
     }
   }
 
-  // Get balance amount
-  static async getBalanceAmount(
-    userId: string = 'default-user',
-  ): Promise<number> {
+  // Set user balance to a specific amount
+  static async setBalance(userId: string, amount: number): Promise<number> {
     try {
       const balance = await Balance.getOrCreateBalance(userId)
+
+      // Set the balance
+      balance.balance = amount
+      await balance.save()
+
+      logger.info(
+        `💰 Balance set for user: ${userId}, newBalance: ${balance.balance}`,
+      )
+
       return balance.balance
-    } catch (error: any) {
-      console.log('❌ Error getting balance amount:', error.message)
-      return 0
+    } catch (error) {
+      logger.error('❌ Set balance error:', error)
+      throw new Error('Failed to set balance')
     }
   }
 }

@@ -29,20 +29,53 @@ const app = express()
 
 // Middleware
 app.use(cors())
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  logger.info(
+    `📥 ${req.method} ${req.originalUrl} - Content-Length: ${req.headers['content-length']}`,
+  )
+  next()
+})
+
+// Raw body parsing for webhook signature verification
+app.use('/callback', express.raw({ type: 'application/json', limit: '10mb' }))
+app.use(
+  '/api/payments/callback',
+  express.raw({ type: 'application/json', limit: '10mb' }),
+)
+
+// Configure body parsing with proper limits and error handling
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+      logger.info(`📦 Request buffer length: ${buf.length}`)
+      logger.info(`📦 Content-Length header: ${req.headers['content-length']}`)
+    },
+  }),
+)
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb',
+  }),
+)
 
 // Health check endpoint
 app.get('/', (req, res) => {
   logger.info('✅ GET / - Root endpoint hit')
   res.json({
-    message: 'Chapa Payment Server with Telegram Bot',
+    message: 'Telegram Gaming Payment Server',
     status: 'running',
     timestamp: new Date().toISOString(),
   })
 })
+
+// Webhook callback endpoint
 app.post('/callback', (req, res) => {
-  console.log(req.body)
+  logger.info('🔔 Webhook callback received on /callback')
   PaymentController.handlePaymentCallback(req, res)
 })
 
@@ -60,6 +93,24 @@ app.use(
     next: express.NextFunction,
   ) => {
     logger.error('❌ Server error:', err)
+
+    // Handle specific body parsing errors
+    if (err.type === 'request.size.invalid') {
+      logger.error('❌ Content length mismatch:', {
+        expected: err.expected,
+        received: err.received,
+        url: req.originalUrl,
+        method: req.method,
+        headers: req.headers,
+      })
+      res.status(400).json({
+        success: false,
+        message: 'Invalid request size',
+        error: 'Content length mismatch',
+      })
+      return
+    }
+
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -71,14 +122,23 @@ app.use(
   },
 )
 
-// // 404 handler
-// app.use('*', (req, res) => {
-//   res.status(404).json({
-//     success: false,
-//     message: 'Endpoint not found',
-//     path: req.originalUrl,
-//   })
-// })
+// 404 handler
+app.use('*', (req, res) => {
+  logger.error(`❌ 404 - Endpoint not found: ${req.method} ${req.originalUrl}`)
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found',
+    path: req.originalUrl,
+    method: req.method,
+    availableEndpoints: [
+      'GET /',
+      'POST /callback',
+      'POST /api/payments/initialize',
+      'POST /api/payments/callback',
+      'GET /api/payments/status/:tx_ref',
+    ],
+  })
+})
 
 // Start server
 app.listen(PORT, () => {

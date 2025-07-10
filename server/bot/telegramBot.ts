@@ -466,9 +466,25 @@ async function handlePaymentMobile(ctx: any, telegramId: number, text: string) {
       return
     }
 
+    // Get current session data to merge with existing payment data
+    const currentSession = await SessionService.getSessionData(telegramId)
+    const existingPaymentData = currentSession?.paymentData || {}
+
+    // Merge the mobile number with existing payment data
+    const updatedPaymentData = {
+      ...existingPaymentData,
+      mobile: text,
+    }
+
     await SessionService.updateSessionState(telegramId, 'processing_payment', {
-      paymentData: { mobile: text },
+      paymentData: updatedPaymentData,
     })
+
+    logger.info(
+      `Payment data prepared for user ${telegramId}:`,
+      updatedPaymentData,
+    )
+
     await TelegramBotController.processPayment(ctx, telegramId)
   } catch (error) {
     logger.error('Error handling payment mobile:', error)

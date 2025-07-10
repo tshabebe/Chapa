@@ -342,6 +342,13 @@ For support, contact: @your_support_handle
       const sessionData = await SessionService.getSessionData(telegramId)
       const paymentData = sessionData?.paymentData
 
+      logger.info(`Session data for user ${telegramId}:`, {
+        sessionData,
+        paymentData,
+        hasAmount: !!paymentData?.amount,
+        hasMobile: !!paymentData?.mobile,
+      })
+
       if (!paymentData?.amount || !paymentData?.mobile) {
         await ctx.reply('❌ Invalid payment data. Please try again.')
         await SessionService.clearSession(telegramId)
@@ -359,11 +366,21 @@ For support, contact: @your_support_handle
         return
       }
 
+      logger.info(`Attempting to create payment for user ${telegramId}`, {
+        amount,
+        mobile,
+        userId: user._id,
+      })
+
       const payment = await PaymentService.createPayment(
         `user-${telegramId}`,
         amount,
         mobile,
       )
+
+      if (!payment?.data?.checkout_url) {
+        throw new Error('No payment URL received from payment service')
+      }
 
       const paymentMessage = `
 ✅ Payment Created Successfully!
@@ -385,10 +402,26 @@ Your balance will be updated automatically after payment.
         userId: user._id,
         amount,
         reference: payment.data.reference,
+        checkout_url: payment.data.checkout_url,
       })
     } catch (error) {
       logger.error('Error processing payment:', error)
-      await ctx.reply('❌ Failed to process payment. Please try again.')
+
+      // Provide more specific error messages
+      let errorMessage = '❌ Failed to process payment. Please try again.'
+
+      if (error instanceof Error) {
+        if (error.message.includes('CHAPA_AUTH_KEY')) {
+          errorMessage =
+            '❌ Payment service configuration error. Please contact support.'
+        } else if (error.message.includes('Invalid userId')) {
+          errorMessage = '❌ User identification error. Please try again.'
+        } else if (error.message.includes('No payment URL')) {
+          errorMessage = '❌ Payment gateway error. Please try again later.'
+        }
+      }
+
+      await ctx.reply(errorMessage)
       await SessionService.clearSession(userId)
     }
   }

@@ -53,18 +53,29 @@ export class PaymentService {
         throw new Error('No payment URL received from Chapa API')
       }
 
-      // Track the payment in our database
+      // Track the payment in our database (non-blocking)
       if (request.userId) {
-        await Payment.createPayment({
-          userId: request.userId,
-          tx_ref: request.tx_ref,
-          amount: parseFloat(request.amount),
-          currency: request.currency,
-          metadata: {
-            phoneNumber: request.phone_number,
-          },
-        })
-        logger.info('💾 Payment tracked in database for user:', request.userId)
+        try {
+          await Payment.createPayment({
+            userId: request.userId,
+            tx_ref: request.tx_ref,
+            amount: parseFloat(request.amount),
+            currency: request.currency,
+            metadata: {
+              phoneNumber: request.phone_number,
+            },
+          })
+          logger.info(
+            '💾 Payment tracked in database for user:',
+            request.userId,
+          )
+        } catch (dbError) {
+          logger.warn(
+            '⚠️ Failed to save payment to database (non-critical):',
+            dbError.message,
+          )
+          // Don't throw error - payment creation should still succeed even if DB save fails
+        }
       }
 
       return response.data
@@ -176,7 +187,38 @@ export class PaymentService {
 
   // Create payment (alias for initializePayment for backward compatibility)
   static async createPayment(userId: string, amount: number, mobile: string) {
+    // Validate required environment variables
+    if (!CHAPA_AUTH_KEY) {
+      throw new Error('CHAPA_AUTH_KEY environment variable is required')
+    }
+
+    if (!CALLBACK_URL) {
+      logger.warn('CALLBACK_URL environment variable is not set')
+    }
+
+    if (!BOT_RETURN_URL) {
+      logger.warn('BOT_RETURN_URL environment variable is not set')
+    }
+
     const tx_ref = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    // Extract the numeric part from userId (e.g., "user-123" -> 123)
+    const numericUserId = userId.replace('user-', '')
+    const parsedUserId = parseInt(numericUserId)
+
+    if (isNaN(parsedUserId)) {
+      throw new Error(`Invalid userId format: ${userId}`)
+    }
+
+    logger.info('Creating payment with data:', {
+      userId: parsedUserId,
+      amount,
+      mobile,
+      tx_ref,
+      callback_url: CALLBACK_URL,
+      return_url: BOT_RETURN_URL,
+    })
+
     const request: PaymentRequest = {
       amount: amount.toString(),
       currency: 'ETB',
@@ -184,7 +226,7 @@ export class PaymentService {
       tx_ref,
       callback_url: CALLBACK_URL, // Add the callback URL from environment
       return_url: BOT_RETURN_URL,
-      userId: parseInt(userId), // Convert string userId to number
+      userId: parsedUserId, // Convert string userId to number
     }
     return this.initializePayment(request)
   }

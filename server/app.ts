@@ -29,40 +29,7 @@ const app = express()
 
 // Middleware
 app.use(cors())
-
-// Add request logging middleware
-app.use((req, res, next) => {
-  logger.info(
-    `📥 ${req.method} ${req.originalUrl} - Content-Length: ${req.headers['content-length']}`,
-  )
-  next()
-})
-
-// Raw body parsing for webhook signature verification
-app.use('/callback', express.raw({ type: 'application/json', limit: '10mb' }))
-app.use(
-  '/api/payments/callback',
-  express.raw({ type: 'application/json', limit: '10mb' }),
-)
-
-// Configure body parsing with proper limits and error handling
-app.use(
-  express.json({
-    limit: '10mb',
-    verify: (req, res, buf) => {
-      // Log the actual buffer length for debugging
-      logger.info(`📦 Request buffer length: ${buf.length}`)
-      logger.info(`📦 Content-Length header: ${req.headers['content-length']}`)
-    },
-  }),
-)
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '10mb',
-  }),
-)
+app.use(express.json())
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -91,24 +58,6 @@ app.use(
     next: express.NextFunction,
   ) => {
     logger.error('❌ Server error:', err)
-
-    // Handle specific body parsing errors
-    if (err.type === 'request.size.invalid') {
-      logger.error('❌ Content length mismatch:', {
-        expected: err.expected,
-        received: err.received,
-        url: req.originalUrl,
-        method: req.method,
-        headers: req.headers,
-      })
-      res.status(400).json({
-        success: false,
-        message: 'Invalid request size',
-        error: 'Content length mismatch',
-      })
-      return
-    }
-
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -119,6 +68,15 @@ app.use(
     })
   },
 )
+
+// // 404 handler
+// app.use('*', (req, res) => {
+//   res.status(404).json({
+//     success: false,
+//     message: 'Endpoint not found',
+//     path: req.originalUrl,
+//   })
+// })
 
 // Start server
 app.listen(PORT, () => {

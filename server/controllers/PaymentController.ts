@@ -53,37 +53,14 @@ export class PaymentController {
   // Handle payment callback
   static async handlePaymentCallback(req: Request, res: Response) {
     try {
-      logger.info('🔔 Payment callback received')
-      logger.info('📋 Request method:', req.method)
-      logger.info('📋 Request URL:', req.originalUrl)
-      logger.info('📋 Request headers:', req.headers)
-
-      // Handle raw body for webhook signature verification
-      let body = req.body
-      if (Buffer.isBuffer(req.body)) {
-        // Convert raw buffer to string for logging
-        const rawBody = req.body.toString('utf8')
-        logger.info('📋 Raw request body:', rawBody)
-
-        try {
-          body = JSON.parse(rawBody)
-        } catch (parseError) {
-          logger.error('❌ Failed to parse JSON body:', parseError)
-          return res.status(400).json({
-            error: 'Invalid JSON body',
-            message: 'Failed to parse request body',
-          })
-        }
-      } else {
-        logger.info('📋 Request body:', req.body)
-      }
-
-      logger.info('📋 Event type:', body.event || 'unknown event')
+      logger.info(
+        '🔔 Payment callback received:',
+        req.body.event || 'unknown event',
+      )
 
       // Verify webhook signature
       const webhookSecret = process.env.WEBHOOK_SECRET
       if (webhookSecret) {
-        logger.info('🔍 Webhook secret found, verifying signature...')
         const isValid = PaymentService.verifyWebhookSignature(
           req,
           webhookSecret,
@@ -96,13 +73,9 @@ export class PaymentController {
           })
         }
         logger.info('✅ Webhook signature verified')
-      } else {
-        logger.warn(
-          '⚠️ No WEBHOOK_SECRET found, skipping signature verification',
-        )
       }
 
-      const { tx_ref, status, currency, amount, event } = body
+      const { tx_ref, status, currency, amount, event } = req.body
 
       // Verify transaction with payment provider
       const verificationResult = await PaymentService.verifyTransaction(tx_ref)

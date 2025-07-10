@@ -53,10 +53,10 @@ export class PaymentService {
         throw new Error('No payment URL received from Chapa API')
       }
 
-      // Track the payment in our database (non-blocking)
+      // Track the payment in our database
       if (request.userId) {
         try {
-          await Payment.createPayment({
+          const savedPayment = await Payment.createPayment({
             userId: request.userId,
             tx_ref: request.tx_ref,
             amount: parseFloat(request.amount),
@@ -66,16 +66,19 @@ export class PaymentService {
             },
           })
           logger.info(
-            '💾 Payment tracked in database for user:',
-            request.userId,
+            '💾 Payment saved to database successfully:',
+            savedPayment._id,
           )
         } catch (dbError) {
-          logger.warn(
-            '⚠️ Failed to save payment to database (non-critical):',
+          logger.error(
+            '❌ Failed to save payment to database:',
             dbError.message,
           )
-          // Don't throw error - payment creation should still succeed even if DB save fails
+          // This is critical - if we can't save the payment, we can't track it
+          throw new Error(`Database error: ${dbError.message}`)
         }
+      } else {
+        logger.warn('⚠️ No userId provided, payment not tracked in database')
       }
 
       return response.data

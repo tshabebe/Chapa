@@ -107,7 +107,16 @@ export class PaymentController {
 
       const { tx_ref, status, currency, amount, event } = body
 
+      if (!tx_ref) {
+        logger.error('❌ No tx_ref in webhook payload')
+        return res.status(400).json({
+          error: 'Missing tx_ref',
+          message: 'Transaction reference is required',
+        })
+      }
+
       // Find the payment record to get the actual user ID
+      logger.info('🔍 Looking for payment with tx_ref:', tx_ref)
       const payment = await PaymentService.findPaymentByTxRef(tx_ref)
 
       if (!payment) {
@@ -118,29 +127,45 @@ export class PaymentController {
         })
       }
 
-      logger.info('✅ Found payment record for user:', payment.userId)
+      logger.info('✅ Found payment record:', {
+        userId: payment.userId,
+        amount: payment.amount,
+        status: payment.status,
+        tx_ref: payment.tx_ref,
+      })
 
       // Verify transaction with payment provider
+      logger.info('🔍 Verifying transaction with Chapa...')
       const verificationResult = await PaymentService.verifyTransaction(tx_ref)
-      logger.info('✅ Transaction verified:', { tx_ref, status, event })
+      logger.info('✅ Transaction verified with Chapa:', verificationResult)
 
       // Update balance on successful payment
       if (status === 'success' && event === 'charge.success') {
-        // Use the actual user ID from the payment record
-        await BalanceService.incrementBalance(
-          payment.userId.toString(),
-          parseFloat(amount),
-        )
-        logger.info(
-          `💰 Balance incremented for user: ${payment.userId}, amount: ${amount}`,
-        )
+        logger.info('💰 Processing successful payment...')
 
-        // Mark payment as successful
-        await payment.markSuccess()
+        try {
+          // Use the actual user ID from the payment record
+          const newBalance = await BalanceService.incrementBalance(
+            payment.userId.toString(),
+            parseFloat(amount),
+          )
+          logger.info(
+            `💰 Balance incremented successfully for user: ${payment.userId}, amount: ${amount}, newBalance: ${newBalance}`,
+          )
+
+          // Mark payment as successful
+          await payment.markSuccess()
+          logger.info('✅ Payment marked as successful in database')
+        } catch (balanceError) {
+          logger.error('❌ Failed to increment balance:', balanceError)
+          // Don't fail the webhook, but log the error
+        }
       } else if (status === 'failed' || event === 'charge.failed') {
         // Mark payment as failed
         await payment.markFailed()
         logger.info('❌ Payment marked as failed for user:', payment.userId)
+      } else {
+        logger.info('ℹ️ Payment status not processed:', { status, event })
       }
 
       res.status(200).json({
@@ -153,7 +178,7 @@ export class PaymentController {
       })
     } catch (error: any) {
       logger.error('❌ Callback error:', error.message)
-      res.status(400).json({
+      res.status(500).json({
         message: 'Callback processing failed',
         error: error.message,
       })

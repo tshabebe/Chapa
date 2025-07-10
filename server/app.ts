@@ -22,8 +22,27 @@ const PORT = process.env.PORT || 5000
 // Connect to MongoDB
 mongoose
   .connect(MONGODB_URL || 'mongodb://localhost:27017/chapa-payments')
-  .then(() => logger.info('✅ Connected to MongoDB'))
-  .catch((err) => logger.error('❌ MongoDB connection error:', err))
+  .then(() => {
+    logger.info('✅ Connected to MongoDB successfully')
+    logger.info(`📊 Database: ${mongoose.connection.db.databaseName}`)
+  })
+  .catch((err) => {
+    logger.error('❌ MongoDB connection error:', err)
+    process.exit(1) // Exit if we can't connect to database
+  })
+
+// Add connection event listeners
+mongoose.connection.on('error', (err) => {
+  logger.error('❌ MongoDB connection error:', err)
+})
+
+mongoose.connection.on('disconnected', () => {
+  logger.warn('⚠️ MongoDB disconnected')
+})
+
+mongoose.connection.on('reconnected', () => {
+  logger.info('✅ MongoDB reconnected')
+})
 
 const app = express()
 

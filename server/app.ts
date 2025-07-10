@@ -127,24 +127,6 @@ app.use(
   },
 )
 
-// Enable 404 handler for debugging
-app.use('*', (req, res) => {
-  logger.error(`❌ 404 - Endpoint not found: ${req.method} ${req.originalUrl}`)
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-    path: req.originalUrl,
-    method: req.method,
-    availableEndpoints: [
-      'GET /',
-      'POST /callback',
-      'POST /api/payments/initialize',
-      'POST /api/payments/callback',
-      'GET /api/payments/status/:tx_ref',
-    ],
-  })
-})
-
 // Start server
 app.listen(PORT, () => {
   logger.info(`🚀 Express server running on port ${PORT}`)

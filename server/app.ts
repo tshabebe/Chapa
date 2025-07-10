@@ -41,7 +41,9 @@ app.get('/', (req, res) => {
   })
 })
 app.post('/callback', (res, req) => {
-  PaymentController.handlePaymentCallback(res, req)
+  console.log(req, res)
+  console.log(res.headers)
+  console.log(req.header)
 })
 
 // API Routes
